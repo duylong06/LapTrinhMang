@@ -6,7 +6,7 @@ Hướng dẫn cho **R1 (trưởng nhóm)**, làm một lần duy nhất ở đ�
 
 Vào GitHub → **New repository**:
 
-- **Repository name:** `truyen-nhanh`
+- **Repository name:** `LapTrinhMang`
 - **Public** hay **Private:** xem lưu ý ở bước 5 trước khi chọn
 - **Không** tích *Add a README*, *.gitignore* hay *license* — repo phải hoàn toàn rỗng, vì dự án đã có sẵn các file này
 
@@ -19,7 +19,7 @@ git init
 git branch -M main
 git add .
 git commit -m "Khởi tạo khung dự án Truyền Nhanh"
-git remote add origin https://github.com/<tai-khoan-cua-ban>/truyen-nhanh.git
+git remote add origin https://github.com/duylong06/LapTrinhMang.git
 git push -u origin main
 ```
 
