@@ -127,7 +127,7 @@ Cần **Python 3.10 trở lên** và **Git**. Trên Windows, khi cài Python nh�
 
 ```bash
 git clone <địa chỉ repo của nhóm>
-cd truyen-nhanh
+cd LapTrinhMang
 python -m venv .venv
 .venv\Scripts\activate          # Windows
 # source .venv/bin/activate     # macOS / Linux
@@ -141,7 +141,7 @@ Lúc này chương trình chỉ in ra danh sách lệnh dự kiến, vì **mọi
 ## Cấu trúc thư mục
 
 ```
-truyen-nhanh/
+LapTrinhMang/
 ├── src/truyennhanh/
 │   ├── protocol/        R1  Đóng khung và thông điệp — hợp đồng giữa bên gửi và bên nhận
 │   ├── core/            R1  Lõi ứng dụng: điều phối mọi thành phần, phát sự kiện cho giao diện
