@@ -6,7 +6,7 @@ Hướng dẫn cho **R1 (trưởng nhóm)**, làm một lần duy nhất ở đ�
 
 Vào GitHub → **New repository**:
 
-- **Repository name:** `truyen-nhanh`
+- **Repository name:** `LapTrinhMang`
 - **Public** hay **Private:** xem lưu ý ở bước 5 trước khi chọn
 - **Không** tích *Add a README*, *.gitignore* hay *license* — repo phải hoàn toàn rỗng, vì dự án đã có sẵn các file này
 
