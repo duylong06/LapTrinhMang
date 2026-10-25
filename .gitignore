@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Môi trường ảo
+.venv/
+venv/
+env/
+
+# Trình soạn thảo, hệ điều hành
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Dữ liệu thử nghiệm — KHÔNG commit: file lớn làm phình repo vĩnh viễn
+du-lieu-thu/
+*.part
+.truyennhanh/
+
+# Bí mật
+.env
+*.pem
+*.key

@@ -1,0 +1,10 @@
+# Nhóm dùng cả Windows và macOS: thống nhất xuống dòng kiểu LF trong repo,
+# để Git không báo cả file bị sửa chỉ vì khác ký tự xuống dòng.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.pdf binary
+*.zip binary
+*.pptx binary
+*.docx binary

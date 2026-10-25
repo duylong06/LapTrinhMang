@@ -1,0 +1,12 @@
+{
+  "_huong_dan": "Điền tên và tài khoản GitHub (không có @) của từng vai. Để trống github thì issue vẫn được tạo nhưng chưa giao cho ai. Nhóm bắt đầu muộn hơn thì sửa ngay_bat_dau (luôn là một ngày Thứ Hai) — hạn của 5 mốc tuần tự dời theo.",
+  "ngay_bat_dau": "2026-10-26",
+  "thanh_vien": [
+    { "vai": "R1", "ten": "Nguyễn Duy Long", "github": "" },
+    { "vai": "R2", "ten": "", "github": "" },
+    { "vai": "R3", "ten": "", "github": "" },
+    { "vai": "R4", "ten": "", "github": "" },
+    { "vai": "R5", "ten": "", "github": "" },
+    { "vai": "R6", "ten": "", "github": "" }
+  ]
+}
