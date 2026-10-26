@@ -105,7 +105,7 @@ sequenceDiagram
 | R3 | Bên gửi (TCP client) | | |
 | R4 | Bên nhận (TCP server) | | |
 | R5 | Giao diện (Tkinter) | | |
-| R6 | Kiểm thử · Đo đạc · Báo cáo | | |
+| R6 | Kiểm thử · Đo đạc · Báo cáo | | | Bùi Kim Hồ
 
 Chi tiết từng vai làm gì, sở hữu file nào, cần gì từ ai: [docs/04-phan-cong.md](docs/04-phan-cong.md).
 
