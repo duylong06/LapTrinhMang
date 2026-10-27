@@ -102,7 +102,7 @@ sequenceDiagram
 |---|---|---|---|
 | R1 | Trưởng nhóm · Giao thức & Lõi | Nguyễn Duy Long | |
 | R2 | Dò tìm thiết bị (UDP) & Dòng lệnh | | |
-| R3 | Bên gửi (TCP client) | | |
+| R3 | Bên gửi (TCP client) | | | Ngô Hồng Hải
 | R4 | Bên nhận (TCP server) | | | Lê Võ Thành Nam
 | R5 | Giao diện (Tkinter) | | |
 | R6 | Kiểm thử · Đo đạc · Báo cáo | | | Bùi Kim Hồ
