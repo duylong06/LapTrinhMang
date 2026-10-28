@@ -100,12 +100,12 @@ sequenceDiagram
 
 | Vai | Phụ trách | Thành viên | GitHub |
 |---|---|---|---|
-| R1 | Trưởng nhóm · Giao thức & Lõi | Nguyễn Duy Long | |
-| R2 | Dò tìm thiết bị (UDP) & Dòng lệnh | | |
-| R3 | Bên gửi (TCP client) | | | Ngô Hồng Hải
-| R4 | Bên nhận (TCP server) | | | Lê Võ Thành Nam
-| R5 | Giao diện (Tkinter) | | |
-| R6 | Kiểm thử · Đo đạc · Báo cáo | | | Bùi Kim Hồ
+| R1 | Trưởng nhóm · Giao thức & Lõi | Nguyễn Duy Long | duylong06 |
+| R2 | Dò tìm thiết bị (UDP) & Dòng lệnh | Như | |
+| R3 | Bên gửi (TCP client) | Ngô Hồng Hải | |
+| R4 | Bên nhận (TCP server) | Lê Võ Thành Nam | |
+| R5 | Giao diện (Tkinter) | Lê Đức Anh | |
+| R6 | Kiểm thử · Đo đạc · Báo cáo | Bùi Kim Hồ | |
 
 Chi tiết từng vai làm gì, sở hữu file nào, cần gì từ ai: [docs/04-phan-cong.md](docs/04-phan-cong.md).
 
