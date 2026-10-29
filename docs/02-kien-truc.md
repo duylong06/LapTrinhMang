@@ -63,12 +63,17 @@ Nhờ vậy R5 làm giao diện trên dịch vụ giả từ tuần 1, và R3, R
 | Hàm | Làm gì |
 |---|---|
 | `start()` / `stop()` | Bật, tắt dò tìm và máy chủ nhận |
+| `device_name` | Tên máy này đang hiện với máy khác (thuộc tính, chỉ đọc) |
 | `list_peers()` | Danh sách máy đang thấy |
+| `refresh_peers()` | Gửi lại DISCOVER ngay — nút Làm mới, lệnh `scan` |
 | `add_manual_peer(ip, port)` | Thêm máy theo IP |
-| `send_file(peer_id, path)` | Bắt đầu gửi; trả về `transfer_id` ngay, việc gửi chạy ở luồng riêng |
+| `list_transfers()` | Các lượt truyền của lần chạy này, mới nhất trước |
+| `send_file(peer_id, path, as_name=None)` | Bắt đầu gửi; trả về `transfer_id` ngay, việc gửi chạy ở luồng riêng. `as_name` chỉ dùng cho kiểm thử bảo mật KT-28 |
 | `respond_to_offer(transfer_id, accept)` | Người dùng đồng ý hoặc từ chối nhận |
 | `cancel(transfer_id)` | Hủy một lượt |
-| `set_download_dir(path)` | Đổi thư mục nhận |
+| `get_download_dir()` / `set_download_dir(path)` | Xem, đổi thư mục nhận |
+
+> **Chốt ở T05 (tuần 1).** Giao diện và dòng lệnh chỉ được gọi những hàm trong bảng này. Muốn thêm hàm thì sửa bảng này trước qua PR do R1 duyệt, rồi mới sửa code — và nhớ sửa cả `gui/fake_service.py` cho khớp, có test `test_fake_service_matches_real_api` canh chuyện đó.
 
 **Sự kiện** — lõi đẩy vào `service.events` (một `queue.Queue`), giao diện lấy ra để vẽ:
 
@@ -80,6 +85,8 @@ Nhờ vậy R5 làm giao diện trên dịch vụ giả từ tuần 1, và R3, R
 | `TransferProgress` | Tiến độ, tối đa 10 lần mỗi giây mỗi lượt |
 | `TransferFinished` | Kết thúc: thành công, bị từ chối, lỗi hoặc bị hủy |
 | `StatusMessage` | Thông báo trạng thái chung, ví dụ "Đang tính mã băm..." |
+
+Kiểu dữ liệu đi kèm nằm ở `core/models.py`: `Peer` (một máy trong mạng), `Transfer` và `TransferState` (một lượt truyền và trạng thái của nó), `Direction` (gửi hay nhận).
 
 ## 4. Mô hình luồng
 

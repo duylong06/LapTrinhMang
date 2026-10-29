@@ -17,7 +17,7 @@ import queue
 from pathlib import Path
 
 from truyennhanh.core.events import Event
-from truyennhanh.core.models import Peer
+from truyennhanh.core.models import Peer, Transfer
 from truyennhanh.protocol.constants import TRANSFER_PORT_DEFAULT
 
 
@@ -33,19 +33,32 @@ class FakeService:
     def stop(self) -> None:
         raise NotImplementedError("T23 · R5")
 
+    @property
+    def device_name(self) -> str:
+        raise NotImplementedError("T23 · R5")
+
     def list_peers(self) -> list[Peer]:
+        raise NotImplementedError("T23 · R5")
+
+    def refresh_peers(self) -> None:
         raise NotImplementedError("T23 · R5")
 
     def add_manual_peer(self, ip: str, port: int = TRANSFER_PORT_DEFAULT) -> Peer:
         raise NotImplementedError("T23 · R5")
 
-    def send_file(self, peer_id: str, path: str | Path) -> str:
+    def list_transfers(self) -> list[Transfer]:
+        raise NotImplementedError("T23 · R5")
+
+    def send_file(self, peer_id: str, path: str | Path, as_name: str | None = None) -> str:
         raise NotImplementedError("T23 · R5")
 
     def respond_to_offer(self, transfer_id: str, accept: bool) -> None:
         raise NotImplementedError("T23 · R5")
 
     def cancel(self, transfer_id: str) -> None:
+        raise NotImplementedError("T23 · R5")
+
+    def get_download_dir(self) -> Path:
         raise NotImplementedError("T23 · R5")
 
     def set_download_dir(self, path: str | Path) -> None:
