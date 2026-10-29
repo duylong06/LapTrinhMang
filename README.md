@@ -101,7 +101,7 @@ sequenceDiagram
 | Vai | Phụ trách | Thành viên | GitHub |
 |---|---|---|---|
 | R1 | Trưởng nhóm · Giao thức & Lõi | Nguyễn Duy Long | duylong06 |
-| R2 | Dò tìm thiết bị (UDP) & Dòng lệnh | Như | |
+| R2 | Dò tìm thiết bị (UDP) & Dòng lệnh | Như |nhunth7569-byte|
 | R3 | Bên gửi (TCP client) | Ngô Hồng Hải | |
 | R4 | Bên nhận (TCP server) | Lê Võ Thành Nam | |
 | R5 | Giao diện (Tkinter) | Lê Đức Anh | |
