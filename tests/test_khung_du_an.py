@@ -98,11 +98,19 @@ def test_fake_service_matches_real_api():
     from truyennhanh.gui.fake_service import FakeService
 
     def public_api(cls):
-        return {
+        api = {
             name: list(inspect.signature(fn).parameters)
             for name, fn in inspect.getmembers(cls, inspect.isfunction)
             if not name.startswith("_")
         }
+        # property không phải function nên getmembers(isfunction) bỏ qua — phải so riêng,
+        # nếu không thiếu một property vẫn lọt qua test.
+        api.update({
+            name: "property"
+            for name, obj in vars(cls).items()
+            if isinstance(obj, property) and not name.startswith("_")
+        })
+        return api
 
     assert public_api(FakeService) == public_api(TruyenNhanhService)
     assert "events" in TruyenNhanhService.__annotations__

@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Phiên bản** | 1.0-draft |
-| **Trạng thái** | Bản nháp — chốt thành v1.0 ở nhiệm vụ T03 (tuần 1) |
-| **Người giữ** | R1. Sau khi chốt, mọi thay đổi phải qua PR do R1 duyệt |
+| **Phiên bản** | 1.0 |
+| **Trạng thái** | **Đã chốt** (T03, tuần 1). Mọi thay đổi từ đây phải qua PR do R1 duyệt |
+| **Người giữ** | R1 — Nguyễn Duy Long |
 
 Đây là **hợp đồng** giữa bên gửi (R3) và bên nhận (R4). Hai người viết code riêng, nhưng chương trình của họ chỉ nói chuyện được với nhau nếu cả hai làm **đúng từng byte** như tài liệu này. Có chỗ nào mơ hồ thì hỏi R1 và sửa tài liệu trước, sửa code sau.
 
@@ -399,3 +399,4 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 | Phiên bản | Ngày | Người sửa | Thay đổi |
 |---|---|---|---|
 | 1.0-draft | 26/10/2026 | R1 | Bản đầu tiên |
+| 1.0 | 29/10/2026 | R1 | Chốt sau buổi đọc chung (T03). Nội dung kỹ thuật giữ nguyên so với bản nháp; module `framing.py` ở T04 đã được kiểm chứng khớp ví dụ hex ở mục 5 |

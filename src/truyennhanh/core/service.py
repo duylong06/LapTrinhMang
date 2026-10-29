@@ -15,7 +15,7 @@ from pathlib import Path
 
 from truyennhanh.config import Config
 from truyennhanh.core.events import Event
-from truyennhanh.core.models import Peer
+from truyennhanh.core.models import Peer, Transfer
 from truyennhanh.protocol.constants import TRANSFER_PORT_DEFAULT
 
 
@@ -40,16 +40,42 @@ class TruyenNhanhService:
         """Gửi BYE, hủy các lượt đang chạy với lý do shutting_down, dừng mọi luồng, giữ .part."""
         raise NotImplementedError("T14, T33 · R1")
 
+    @property
+    def device_name(self) -> str:
+        """Tên máy này đang hiện với các máy khác. Giao diện hiện ở góc cửa sổ."""
+        raise NotImplementedError("T14 · R1")
+
     def list_peers(self) -> list[Peer]:
         """Ảnh chụp danh sách máy đang thấy."""
+        raise NotImplementedError("T25 · R1")
+
+    def refresh_peers(self) -> None:
+        """Gửi lại DISCOVER ngay, không chờ chu kỳ 2 giây.
+
+        Dùng cho nút Làm mới trên giao diện và lệnh `truyennhanh scan`.
+        Trả về ngay; máy tìm thấy báo về bằng sự kiện PeerFound.
+        """
         raise NotImplementedError("T25 · R1")
 
     def add_manual_peer(self, ip: str, port: int = TRANSFER_PORT_DEFAULT) -> Peer:
         """Thêm máy theo IP (FR-02). Máy thêm tay không bị hết hạn."""
         raise NotImplementedError("T25, T29 · R1, R2")
 
-    def send_file(self, peer_id: str, path: str | Path) -> str:
-        """Bắt đầu gửi một file. Tạo luồng gửi và trả về transfer_id NGAY."""
+    def list_transfers(self) -> list[Transfer]:
+        """Các lượt truyền của lần chạy này, mới nhất trước.
+
+        Giao diện chủ yếu dựng danh sách từ sự kiện; hàm này để lấy trạng thái
+        ban đầu lúc mở cửa sổ và để vẽ lại khi cần.
+        """
+        raise NotImplementedError("T25 · R1")
+
+    def send_file(self, peer_id: str, path: str | Path, as_name: str | None = None) -> str:
+        """Bắt đầu gửi một file. Tạo luồng gửi và trả về transfer_id NGAY.
+
+        as_name: khai một tên khác trong OFFER thay cho tên file thật. Chỉ dùng cho
+        kiểm thử bảo mật KT-28 (lệnh `truyennhanh send --as-name ../../hack.txt`),
+        giao diện không bao giờ truyền tham số này.
+        """
         raise NotImplementedError("T25 · R1")
 
     def respond_to_offer(self, transfer_id: str, accept: bool) -> None:
@@ -59,6 +85,10 @@ class TruyenNhanhService:
     def cancel(self, transfer_id: str) -> None:
         """Hủy một lượt, gửi hay nhận đều được. Kết quả về qua TransferFinished."""
         raise NotImplementedError("T25 · R1")
+
+    def get_download_dir(self) -> Path:
+        """Thư mục nhận hiện tại. Giao diện hiện lên và dùng cho nút Mở thư mục."""
+        raise NotImplementedError("T14 · R1")
 
     def set_download_dir(self, path: str | Path) -> None:
         """Đổi thư mục nhận cho các lượt sau."""
