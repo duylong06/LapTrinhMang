@@ -196,33 +196,37 @@ HOSTILE_NAMES = [
 ]
 
 
-@pytest.mark.parametrize("raw", HOSTILE_NAMES)
+@pytest.mark.parametrize(
+    "raw",
+    HOSTILE_NAMES,
+    ids=[f"case-{i}" for i in range(len(HOSTILE_NAMES))]
+)
 def test_sanitize_never_returns_empty_name(raw):
     assert sanitize_filename(raw)
 
 
-@pytest.mark.parametrize("raw", HOSTILE_NAMES)
+@pytest.mark.parametrize("raw", HOSTILE_NAMES, ids=[f"case-{i}" for i in range(len(HOSTILE_NAMES))])
 def test_sanitize_result_has_no_forbidden_characters(raw):
     assert not any(c in sanitize_filename(raw) for c in '<>:"/\\|?*')
 
 
-@pytest.mark.parametrize("raw", HOSTILE_NAMES)
+@pytest.mark.parametrize("raw", HOSTILE_NAMES, ids=[f"case-{i}" for i in range(len(HOSTILE_NAMES))])
 def test_sanitize_result_has_no_control_characters(raw):
     assert not any(ord(c) < 32 or ord(c) == 127 for c in sanitize_filename(raw))
 
 
-@pytest.mark.parametrize("raw", HOSTILE_NAMES)
+@pytest.mark.parametrize("raw", HOSTILE_NAMES, ids=[f"case-{i}" for i in range(len(HOSTILE_NAMES))])
 def test_sanitize_result_does_not_start_or_end_with_dot_or_space(raw):
     out = sanitize_filename(raw)
     assert out == out.strip(". ")
 
 
-@pytest.mark.parametrize("raw", HOSTILE_NAMES)
+@pytest.mark.parametrize("raw", HOSTILE_NAMES, ids=[f"case-{i}" for i in range(len(HOSTILE_NAMES))])
 def test_sanitize_result_fits_in_byte_limit(raw):
     assert _byte_length(sanitize_filename(raw)) <= MAX_FILENAME_BYTES
 
 
-@pytest.mark.parametrize("raw", HOSTILE_NAMES)
+@pytest.mark.parametrize("raw", HOSTILE_NAMES, ids=[f"case-{i}" for i in range(len(HOSTILE_NAMES))])
 def test_sanitize_is_idempotent(raw):
     """Tên đã sạch đưa qua hàm lần nữa phải không đổi."""
     once = sanitize_filename(raw)
@@ -236,8 +240,6 @@ def test_sanitize_rejects_non_string_input(bad):
     with pytest.raises(TypeError):
         sanitize_filename(bad)
 
-
-@pytest.mark.xfail(reason="chờ sửa NH-27: surrogate đơn lẻ làm encode('utf-8') ném lỗi ở bước 8")
 def test_sanitize_survives_lone_surrogate():
     """Tên JSON "\\ud800.txt" không được làm hàm crash; kết quả hợp lệ và không chứa surrogate."""
     out = sanitize_filename("\ud800" * 300 + ".txt")
