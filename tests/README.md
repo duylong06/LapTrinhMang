@@ -34,3 +34,22 @@ pytest -m "not cham"      # bỏ qua test chậm
 - Test tích hợp dùng cổng `0` để hệ điều hành chọn cổng trống.
 - Test viết trước khi code xong: `@pytest.mark.xfail(reason="chờ T13")`, bỏ dấu khi code xong.
 - Test chạy quá 10 giây: `@pytest.mark.cham`.
+
+Tuần 2
+## Hiện có
+
+| File | Kiểm tra | Trạng thái |
+|---|---|---|
+| `test_khung_du_an.py` | Kiểm tra module và hằng số | Đã có |
+| `test_framing.py` | Kiểm tra đóng/mở khung TCP | Đã có |
+| `test_filenames.py` | Kiểm tra tên file an toàn | Đã có |
+| `test_messages.py` | Kiểm tra thông điệp giao thức OFFER | Đã có, chờ R1 hoàn thành T13 |
+
+## Sẽ thêm
+
+| File | Nhiệm vụ | Người viết |
+|---|---|---|
+| `test_peer_table.py` | T16 | R2 |
+| `test_discovery_messages.py` | T15 | R2 |
+| `test_hashing.py` | T18 | R3 |
+| `test_tich_hop.py` | T31 | R6 |
