@@ -29,7 +29,31 @@ pytest tests/test_framing.py -v
 pytest -m "not cham"      # bỏ qua test chậm
 ```
 
-## 3. Danh sách ca kiểm thử
+## 3. Kế hoạch thực hiện kiểm thử theo tuần
+
+| Thời gian | Nội dung kiểm thử | Người thực hiện | Kết quả cần đạt |
+|---|---|---|---|
+| Tuần 1 | Hoàn thiện danh sách ca kiểm thử, kiểm tra bộ file mẫu, mã SHA-256 và các trường hợp kiểm thử cơ bản | R6 | Có kế hoạch kiểm thử, dữ liệu mẫu và công cụ kiểm tra |
+| Tuần 2 | Kiểm thử đóng khung dữ liệu, thông điệp giao thức, tên file và các trường hợp dữ liệu không hợp lệ | R6 phối hợp R1, R4 | Các ca kiểm thử giao thức có kết quả rõ ràng |
+| Tuần 3 | Kiểm thử tích hợp gửi, nhận, từ chối, hủy và truyền tiếp file | R6 phối hợp các thành viên phụ trách module | Luồng truyền file hoạt động đúng |
+| Tuần 4 | Kiểm thử nhiều máy, kiểm thử phá hoại và đo hiệu năng | R6 phối hợp cả nhóm | Có kết quả đo, số liệu và biểu đồ |
+| Tuần 5 | Tổng hợp kết quả, đánh giá lỗi còn tồn tại và hoàn thiện báo cáo | R6 | Có báo cáo kiểm thử và kết luận |
+
+Nguyên tắc thực hiện:
+- R6 phụ trách chuẩn bị ca kiểm thử, công cụ và tổng hợp kết quả.
+- Thành viên phụ trách module phối hợp sửa lỗi và xác nhận kết quả kiểm thử liên quan.
+- Các ca cần nhiều máy thật phải ghi rõ máy, hệ điều hành và điều kiện mạng.
+- Chỉ đánh dấu PASS khi đã thực hiện và kết quả đáp ứng đúng mong đợi.
+## 4. Danh sách ca kiểm thử
+### Phân công và thời điểm thực hiện
+
+| Nhóm kiểm thử | Người thực hiện | Thời điểm |
+|---|---|---|
+| Kiểm thử đơn vị (KT-01 đến KT-11) | R6 | Tuần 1–2, khi hoàn thiện từng module |
+| Kiểm thử tích hợp (KT-12 đến KT-19) | R6 phối hợp R1, R2, R3 | Tuần 2–3, sau khi các module được tích hợp |
+| Kiểm thử hệ thống (KT-20 đến KT-38) | R6 phối hợp cả nhóm | Tuần 3–4, khi có bản chạy thử |
+| Kiểm thử bảo mật và ca nguy hiểm | R6 phối hợp R4 | Tuần 2–4, sau khi hoàn thiện các chức năng liên quan |
+| Kiểm thử giao diện và tính dễ sử dụng | R6 phối hợp các thành viên | Tuần 3–4, khi giao diện cơ bản hoàn thiện 
 
 Mỗi ca có mã `KT-xx`, ánh xạ tới yêu cầu trong [docs/01](01-de-cuong.md).
 
@@ -69,11 +93,16 @@ Mỗi ca có mã `KT-xx`, ánh xạ tới yêu cầu trong [docs/01](01-de-cuong
 | KT-20 | Bật ứng dụng trên hai máy | Thấy nhau trong 3 giây | FR-01, NFR-01 |
 | KT-21 | Tắt bình thường; rút WiFi đột ngột | Biến mất ngay; biến mất trong 7 giây | NFR-01 |
 | KT-22 | Chặn UDP 50505 bằng tường lửa, thêm máy theo IP | Vẫn gửi được file | FR-02 |
-| KT-23 | Gửi file 1 GB qua WiFi, trong lúc đó kéo cửa sổ và bấm các nút | Cửa sổ không đơ | FR-05, NFR-04 |
+| KT-23 | Gửi file 1 GB qua WiFi, trong lúc đó kéo cửa sổ và bấm các nút | Cửa sổ không đơ | NFR-04 |
 | KT-24 | Rút WiFi ở 25%, 50%, 75% rồi cắm lại | Tự truyền tiếp, file khớp | FR-07, NFR-03 |
 | KT-25 | Một máy nhận từ hai máy cùng lúc | Cả hai file khớp | FR-09 |
 | KT-26 | Gửi file lớn hơn 4 GB | File khớp | FR-03 |
 | KT-27 | Chạy trên Windows 10, Windows 11 và ít nhất một máy macOS hoặc Linux | Gửi nhận chéo được giữa các hệ điều hành | NFR-07 |
+| KT-35 | Hai máy truyền file dung lượng lớn, quan sát giao diện ở cả bên gửi và bên nhận | Cả hai bên đều hiển thị tiến độ, tốc độ truyền và thời gian còn lại; các giá trị được cập nhật trong quá trình truyền | FR-05 |
+| KT-36 | Truyền cùng một file 500 MB qua Truyen Nhanh và Google Drive trong cùng điều kiện mạng | Ghi thời gian hoàn tất của mỗi cách; Truyen Nhanh có thời gian thấp hơn Google Drive | NFR-06 |
+| KT-37 | Dùng điện thoại truy cập trang gửi file trên máy tính và gửi một file thử nghiệm | Khi chức năng được triển khai, máy tính nhận được file, nội dung và SHA-256 khớp file gốc | FR-11 (mở rộng) |
+| KT-38 | Khởi chạy và thực hiện gửi, nhận file bằng cả giao diện GUI và dòng lệnh CLI | Cả GUI và CLI đều thực hiện được chức năng gửi, nhận file; file nhận có nội dung và SHA-256 khớp file gốc | FR-10 |
+
 
 ### Bảo mật
 
@@ -98,7 +127,7 @@ python -c "import socket; s = socket.create_connection(('127.0.0.1', 50506)); s.
 | KT-33 | Một người ngoài nhóm gửi file lần đầu, không ai hướng dẫn | Làm được trong 2 phút | FR-10 |
 | KT-34 | Gây ra mọi lỗi đã biết (tường lửa chặn, máy nhận tắt, ổ đầy, từ chối) | Mọi thông báo là câu tiếng Việt dễ hiểu, không có traceback | FR-05 |
 
-## 4. Các ca nguy hiểm phía bên nhận
+## 5. Các ca nguy hiểm phía bên nhận
 
 R4 lập danh sách đầy đủ ở nhiệm vụ T09 và bổ sung vào đây. Khởi điểm:
 
@@ -115,10 +144,14 @@ R4 lập danh sách đầy đủ ở nhiệm vụ T09 và bổ sung vào đây. 
 | Hai máy gửi cùng một file cùng lúc | Lượt sau REJECT `busy` |
 | Kết nối rồi im lặng | Đóng sau 15 giây |
 | Byte rác, khung khổng lồ, loại khung lạ | Đóng kết nối đó, không ảnh hưởng kết nối khác |
+| Tắt đột ngột tiến trình bên gửi khi đang truyền | Kết nối được đóng; bên nhận không tạo file hoàn chỉnh; giữ `.part` nếu hỗ trợ truyền tiếp |
+| Tắt đột ngột tiến trình bên nhận khi đang truyền | Bên gửi phát hiện mất kết nối; không báo truyền thành công; có thể truyền tiếp khi bên nhận khởi động lại |
+| Ngắt Wi-Fi giữa chừng khi đang truyền file | Kết nối bị phát hiện gián đoạn; file chưa hoàn chỉnh không xuất hiện như file nhận thành công; hỗ trợ truyền tiếp nếu bật chức năng |
 
-## 5. Theo dõi kết quả
+## 6. Theo dõi kết quả
 
 Mỗi lần chạy kiểm thử thủ công (hệ thống, phá hoại, bảo mật, khả dụng), thêm một dòng. Ca không đạt thì mở issue nhãn `loi`, giao cho chủ module, ghi số issue vào cột Ghi chú.
+Kết quả sử dụng ba trạng thái: PASS (đạt), FAIL (không đạt), NOT RUN (chưa thực hiện). Với ca chưa triển khai chức năng, ghi NOT RUN và nêu rõ lý do trong cột Ghi chú.
 
 | Ngày | Mã | Người chạy | Máy, mạng | Kết quả | Ghi chú |
 |---|---|---|---|---|---|
