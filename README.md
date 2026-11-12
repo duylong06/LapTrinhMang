@@ -105,7 +105,7 @@ sequenceDiagram
 | R3 | Bên gửi (TCP client) | Ngô Hồng Hải | | VoMenh18
 | R4 | Bên nhận (TCP server) | Lê Võ Thành Nam |namlvt4260-ops|
 | R5 | Giao diện (Tkinter) | Lê Đức Anh |Taeaox18 |
-| R6 | Kiểm thử · Đo đạc · Báo cáo | Bùi Kim Hồ | |
+| R6 | Kiểm thử · Đo đạc · Báo cáo | Bùi Kim Hồ |kimho2411|
 
 Chi tiết từng vai làm gì, sở hữu file nào, cần gì từ ai: [docs/04-phan-cong.md](docs/04-phan-cong.md).
 
