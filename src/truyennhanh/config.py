@@ -25,5 +25,14 @@ class Config:
 
 
 def default_download_dir() -> Path:
-    """<thư mục người dùng>/Downloads/TruyenNhanh — tạo nếu chưa có."""
-    raise NotImplementedError("T14 · R1")
+    """<thư mục người dùng>/Downloads/TruyenNhanh — tạo nếu chưa có.
+
+    Path.home() chạy đúng trên cả Windows, macOS và Linux nên không phải viết
+    nhánh riêng cho từng hệ điều hành.
+
+    Máy nào không có sẵn thư mục Downloads (một số bản Linux gọn nhẹ) thì
+    mkdir với parents=True tự tạo luôn cả nhánh cha.
+    """
+    path = Path.home() / "Downloads" / "TruyenNhanh"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
