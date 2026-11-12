@@ -10,9 +10,6 @@ from truyennhanh.protocol.messages import (
     parse_offer,
 )
 
-pytestmark = pytest.mark.xfail(reason="Chờ R1 hoàn thành T13")
-
-
 TRANSFER_ID = "0b8c5c5e-2f7d-4c5a-9e61-3a2d7c1f9b40"
 SENDER_ID = "5d2e8f10-7c3b-4a9e-b1d4-6f0a2c8e9b13"
 SHA256 = "a" * 64
