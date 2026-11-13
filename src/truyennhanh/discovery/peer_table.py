@@ -56,7 +56,8 @@ class PeerTable:
                 peer.ip = ip
                 peer.tcp_port = tcp_port
                 peer.last_seen = self._clock()
-                peer.os = os
+                if os is not None:
+    peer.os = os
 
             return is_new
 
