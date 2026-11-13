@@ -56,6 +56,19 @@ Việc chuyển sang Private giúp áp dụng quy tắc tường lửa phù hợ
 - Không nên mở tất cả các cổng không cần thiết.
 
 Cấu hình thực tế có thể khác nhau tùy phiên bản hệ điều hành và phần mềm tường lửa.
+### Ghi chú về tùy chọn Socket khi kiểm thử UDP Broadcast
+
+Trong chương trình UDP Broadcast, cần chú ý hai tùy chọn Socket:
+
+- `SO_BROADCAST`: Bật ở socket gửi để cho phép gửi gói tin UDP đến địa chỉ Broadcast.
+- `SO_REUSEADDR`: Hỗ trợ sử dụng lại địa chỉ socket trong những trường hợp hệ điều hành cho phép.
+
+**Khi chạy hai chương trình trên cùng một máy và cùng sử dụng cổng UDP 50505:**
+
+- Trên Windows, `SO_REUSEADDR` cho phép nhiều socket có thể bind cùng địa chỉ và cổng trong một số trường hợp, nhưng cách phân phối gói tin giữa các socket có thể không xác định.
+- Trên macOS, khi nhiều socket cần bind cùng một cổng UDP, có thể cần `SO_REUSEPORT` cùng với `SO_REUSEADDR`, tùy cấu hình.
+- `SO_BROADCAST` được sử dụng ở socket gửi, không thay thế cho tùy chọn bind cổng ở socket nhận.
+- Cần kiểm tra kết quả thực tế trên từng hệ điều hành, không mặc định Windows và macOS có cách xử lý giống nhau.
 
 ## 4. Không thấy máy kia: kiểm tra theo thứ tự
 Khi hai máy không tìm thấy nhau, thực hiện kiểm tra theo thứ tự:
