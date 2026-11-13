@@ -21,7 +21,7 @@ class PeerTable:
     def __init__(
         self,
         timeout_s: float = PEER_TIMEOUT_S,
-        clock: Callable[[], float] = time.monotonic
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._timeout_s = timeout_s
         self._clock = clock
@@ -34,7 +34,7 @@ class PeerTable:
         name: str,
         ip: str,
         tcp_port: int,
-        os: str | None = None
+        os: str | None = None,
     ) -> bool:
         """Thêm hoặc cập nhật máy. True nếu là máy mới."""
         with self._lock:
@@ -56,8 +56,8 @@ class PeerTable:
                 peer.ip = ip
                 peer.tcp_port = tcp_port
                 peer.last_seen = self._clock()
-                peer.os = os
-
+                if os is not None:
+                    peer.os = os
             return is_new
 
     def add_manual(self, ip: str, tcp_port: int) -> Peer:
