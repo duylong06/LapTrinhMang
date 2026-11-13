@@ -57,24 +57,6 @@ Việc chuyển sang Private giúp áp dụng quy tắc tường lửa phù hợ
 
 Cấu hình thực tế có thể khác nhau tùy phiên bản hệ điều hành và phần mềm tường lửa.
 
-**Cách 1: Cho phép từ thông báo Windows**
-
-- Kiểm tra chương trình được yêu cầu cấp quyền là Python.
-- Chọn Allow access nếu đang sử dụng mạng riêng đáng tin cậy.
-- Chỉ cho phép trên Private networks, không cần bật Public networks.
-
-**Cách 2: Cấp quyền thủ công**
-
-1. Mở Windows Security.
-2. Chọn Firewall & network protection.
-3. Chọn Allow an app through firewall.
-4. Chọn Change settings.
-5. Tìm Python trong danh sách.
-6. Đánh dấu quyền truy cập tại Private.
-7. Nếu chưa có Python, chọn Allow another app để thêm chương trình.
-
-**Lưu ý:** Không tắt toàn bộ Windows Firewall. Chỉ cấp quyền cần thiết cho chương trình.
-
 ## 4. Không thấy máy kia: kiểm tra theo thứ tự
 Khi hai máy không tìm thấy nhau, thực hiện kiểm tra theo thứ tự:
 
