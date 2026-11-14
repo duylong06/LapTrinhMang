@@ -57,24 +57,6 @@ Việc chuyển sang Private giúp áp dụng quy tắc tường lửa phù hợ
 
 Cấu hình thực tế có thể khác nhau tùy phiên bản hệ điều hành và phần mềm tường lửa.
 
-**Cách 1: Cho phép từ thông báo Windows**
-
-- Kiểm tra chương trình được yêu cầu cấp quyền là Python.
-- Chọn Allow access nếu đang sử dụng mạng riêng đáng tin cậy.
-- Chỉ cho phép trên Private networks, không cần bật Public networks.
-
-**Cách 2: Cấp quyền thủ công**
-
-1. Mở Windows Security.
-2. Chọn Firewall & network protection.
-3. Chọn Allow an app through firewall.
-4. Chọn Change settings.
-5. Tìm Python trong danh sách.
-6. Đánh dấu quyền truy cập tại Private.
-7. Nếu chưa có Python, chọn Allow another app để thêm chương trình.
-
-**Lưu ý:** Không tắt toàn bộ Windows Firewall. Chỉ cấp quyền cần thiết cho chương trình.
-
 ## 4. Không thấy máy kia: kiểm tra theo thứ tự
 Khi hai máy không tìm thấy nhau, thực hiện kiểm tra theo thứ tự:
 
@@ -105,23 +87,49 @@ Nên ưu tiên kiểm tra trên card mạng thực tế đang sử dụng.
 <img width="1558" height="768" alt="Cửa sổ Windows Defender Firewall with Advanced Security, mục Inbound Rules, lọc theo card mạng đang dùng" src="https://github.com/user-attachments/assets/f5c70147-e4a1-4a96-876d-f27bc9b6cf11" />
 
 *Hình 1 — Kiểm tra quy tắc tường lửa cho card mạng thực tế.*
+## 6. Một số tùy chọn socket liên quan
 
+### 6.1. SO_REUSEADDR
 
-## 6. Kết quả kiểm tra WiFi trường
-### 6.1. Thông tin thử nghiệm
+`SO_REUSEADDR` cho phép socket sử dụng lại địa chỉ cục bộ trong một số trường hợp nhất định. Tùy chọn này thường được sử dụng ở phía máy chủ để thuận tiện khởi động lại chương trình sau khi socket trước đó đã đóng.
+
+Ví dụ:
+
+```python
+import socket
+
+server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+```
+
+### 6.2. SO_BROADCAST
+
+`SO_BROADCAST` cho phép socket UDP gửi dữ liệu đến địa chỉ broadcast trong mạng. Tùy chọn này cần thiết khi ứng dụng sử dụng UDP Broadcast để dò tìm các thiết bị khác.
+
+Ví dụ:
+
+```python
+import socket
+
+udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+```
+
+**Lưu ý:** Các tùy chọn trên cần được thiết lập trước khi thực hiện thao tác tương ứng. Cách hoạt động cụ thể của `SO_REUSEADDR` có thể khác nhau tùy hệ điều hành.
+
+## 7. Kết quả kiểm tra WiFi trường
+### 7.1. Thông tin thử nghiệm
 
 - Thời gian: 07/11/2026.
 - Số thiết bị: 2 máy tính.
 - IP máy thứ nhất: `10.67.92.75`.
 - IP máy thứ hai: `10.177.112.90`.
 
-### 6.2. Kết quả thử nghiệm
+### 7.2. Kết quả thử nghiệm
 
 Qua kết quả nhóm ghi nhận, hai máy tính không thể kết nối như mong muốn và xuất hiện lỗi `WinError 10060`.
 
 Hai địa chỉ IP thuộc các mạng con khác nhau, do đó cần xem xét cấu hình mạng và chính sách kết nối của hệ thống Wi-Fi trường.
 
-### 6.3. Phương án thay thế
+### 7.3. Phương án thay thế
 
 Trong trường hợp mạng Wi-Fi trường không đáp ứng yêu cầu giao tiếp giữa các thiết bị, nhóm đề xuất sử dụng:
 
@@ -129,6 +137,6 @@ Trong trường hợp mạng Wi-Fi trường không đáp ứng yêu cầu giao 
 - Router Wi-Fi riêng.
 - Mạng LAN có dây.
 
-### 6.4. Kết luận
+### 7.4. Kết luận
 
 Kết quả thử nghiệm cho thấy việc giao tiếp giữa hai máy trong môi trường mạng đã kiểm tra chưa thành công. Nhóm cần sử dụng mạng thay thế để tiếp tục kiểm thử chức năng dò tìm thiết bị của ứng dụng Truyền Nhanh.
