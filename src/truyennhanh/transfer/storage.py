@@ -49,7 +49,6 @@ def ensure_inside(directory: Path, candidate: Path) -> Path:
     if base not in resolved.parents:
         raise ValueError(f"đường dẫn nằm ngoài thư mục nhận: {candidate}")
     return resolved
-    # raise NotImplementedError("T22 · R4")
 
 
 def finalize(part: Path, download_dir: Path, safe_name: str) -> Path:

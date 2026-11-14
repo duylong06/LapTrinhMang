@@ -1,6 +1,6 @@
 import pytest
 
-from src.truyennhanh.transfer.storage import ensure_inside
+from truyennhanh.transfer.storage import ensure_inside
 
 
 def test_ten_binh_thuong_nam_trong_thu_muc(tmp_path):
