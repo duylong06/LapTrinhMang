@@ -100,7 +100,11 @@ Cách kiểm tra:
 3. Kiểm tra địa chỉ IP và cấu hình broadcast của card mạng đó.
 4. Kiểm tra cấu hình VPN hoặc card mạng ảo nếu chương trình không tìm thấy thiết bị khác.
 
-Nên ưu tiên kiểm tra trên card mạng thực tế đang sử dụng.<img width="1558" height="768" alt="image" src="https://github.com/user-attachments/assets/f5c70147-e4a1-4a96-876d-f27bc9b6cf11" />
+Nên ưu tiên kiểm tra trên card mạng thực tế đang sử dụng.
+
+<img width="1558" height="768" alt="Cửa sổ Windows Defender Firewall with Advanced Security, mục Inbound Rules, lọc theo card mạng đang dùng" src="https://github.com/user-attachments/assets/f5c70147-e4a1-4a96-876d-f27bc9b6cf11" />
+
+*Hình 1 — Kiểm tra quy tắc tường lửa cho card mạng thực tế.*
 
 
 ## 6. Kết quả kiểm tra WiFi trường
