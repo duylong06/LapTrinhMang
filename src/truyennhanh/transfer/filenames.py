@@ -44,8 +44,6 @@ def sanitize_filename(name: str) -> str:
         "NUL.txt"                      -> "_NUL.txt"
         ".."                           -> "file-nhan-duoc"
     """
-    # raise NotImplementedError("T22 · R4")
-
     if not isinstance(name, str):
       # validate_offer đã phải chặn trước (REJECT bad_request); đây chỉ là lưới an toàn.
       raise TypeError("tên file phải là chuỗi")
