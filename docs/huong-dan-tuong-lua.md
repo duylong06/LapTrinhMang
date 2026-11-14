@@ -1,5 +1,4 @@
 # Hướng dẫn mở tường lửa và xử lý sự cố mạng
-
 > **Khung — R2 viết ở nhiệm vụ T06 (tuần 1), bổ sung ở T29 (tuần 3).**
 
 Ứng dụng cần hai cổng mở trên mỗi máy: **UDP 50505** để dò tìm, **TCP 50506** để nhận file. Tường lửa Windows mặc định chặn cả hai với chương trình mới.
