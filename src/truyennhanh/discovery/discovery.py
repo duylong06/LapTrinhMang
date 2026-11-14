@@ -9,7 +9,12 @@ import socket
 import threading
 
 from truyennhanh.core.events import Emit, PeerFound, PeerLost
-from truyennhanh.discovery.messages import DiscoveryPacket, encode_packet, decode_packet
+from truyennhanh.core.models import Peer
+from truyennhanh.discovery.messages import (
+    DiscoveryPacket,
+    encode_packet,
+    decode_packet,
+)
 from truyennhanh.discovery.peer_table import PeerTable
 from truyennhanh.protocol.constants import (
     DISCOVERY_PORT,
@@ -159,7 +164,7 @@ class Discovery:
         """Gửi DISCOVER ngay khi người dùng yêu cầu làm mới."""
         self.discover_now()
 
-    def peers(self) -> list:
+    def peers(self) -> list[Peer]:
         """Trả về danh sách các thiết bị đang được phát hiện."""
         return self._peers.snapshot()
 
