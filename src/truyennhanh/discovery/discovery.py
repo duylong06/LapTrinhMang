@@ -34,7 +34,7 @@ class Discovery:
         self.instance_id = instance_id
         self.device_name = device_name
         self.tcp_port = tcp_port
-        self.peers = peers
+        self._peers = peers
         self.emit = emit
         self.port = port
         self.os_name = platform.system()
@@ -64,8 +64,11 @@ class Discovery:
         )
         return encode_packet(packet)
 
-    def _send(self, packet_type: DiscoveryType,
-              address: tuple[str, int]) -> None:
+    def _send(
+        self,
+        packet_type: DiscoveryType,
+        address: tuple[str, int],
+    ) -> None:
         """Gửi một gói UDP đến địa chỉ chỉ định."""
         with self._lock:
             sock = self._socket
@@ -78,8 +81,11 @@ class Discovery:
         except OSError:
             pass
 
-    def start(self) -> None:
+    def start(self, tcp_port: int | None = None) -> None:
         """Mở socket, bật hai luồng nền và gửi DISCOVER."""
+        if tcp_port is not None:
+            self.set_tcp_port(tcp_port)
+
         with self._lock:
             if self._running:
                 return
@@ -149,6 +155,14 @@ class Discovery:
             (BROADCAST_ADDRESS, self.port),
         )
 
+    def refresh(self) -> None:
+        """Gửi DISCOVER ngay khi người dùng yêu cầu làm mới."""
+        self.discover_now()
+
+    def peers(self) -> list:
+        """Trả về danh sách các thiết bị đang được phát hiện."""
+        return self._peers.snapshot()
+
     def set_tcp_port(self, port: int) -> None:
         """Cập nhật cổng TCP được phát trong ANNOUNCE."""
         if type(port) is not int or not 1 <= port <= 65535:
@@ -178,7 +192,7 @@ class Discovery:
                 continue
 
             if packet.type == DiscoveryType.BYE:
-                peer = self.peers.remove(packet.id)
+                peer = self._peers.remove(packet.id)
                 if peer is not None:
                     self.emit(PeerLost(peer_id=packet.id))
                 continue
@@ -186,7 +200,7 @@ class Discovery:
             if packet.tcp_port is None:
                 continue
 
-            is_new = self.peers.upsert(
+            is_new = self._peers.upsert(
                 peer_id=packet.id,
                 name=packet.name,
                 ip=address[0],
@@ -195,7 +209,7 @@ class Discovery:
             )
 
             if is_new:
-                peer = self.peers.get(packet.id)
+                peer = self._peers.get(packet.id)
                 if peer is not None:
                     self.emit(PeerFound(peer=peer))
 
@@ -213,6 +227,6 @@ class Discovery:
                 (BROADCAST_ADDRESS, self.port),
             )
 
-            expired_peers = self.peers.expire()
+            expired_peers = self._peers.expire()
             for peer in expired_peers:
                 self.emit(PeerLost(peer_id=peer.id))
