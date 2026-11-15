@@ -13,8 +13,14 @@ BỐN LUẬT CỦA MÔ HÌNH LUỒNG — đọc docs/02 mục 4 trước khi vi�
 """
 from __future__ import annotations
 
+import os
 import queue
+import subprocess
+import sys
+import threading
+import time
 import tkinter as tk
+import traceback
 from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -33,6 +39,9 @@ from truyennhanh.core.service import TruyenNhanhService
 from truyennhanh.gui.fake_service import FakeService
 
 POLL_INTERVAL_MS = 100
+MAX_EVENTS_PER_TICK = 200   # mỗi lần poll xử lý tối đa chừng này sự kiện, để cửa sổ luôn kịp vẽ
+BUSY_POLL_MS = 10           # còn sự kiện tồn đọng thì poll lại ngay sau 10 ms
+STOP_TIMEOUT_S = 5          # đóng cửa sổ: chờ service.stop() tối đa chừng này giây rồi thoát hẳn
 
 
 def format_size(n: int) -> str:
@@ -52,6 +61,30 @@ def format_speed(bytes_per_second: float) -> str:
     return f"{bytes_per_second / 1024:.0f} KB/s"
 
 
+def coalesce_progress(events: list) -> list:
+    """Chỉ giữ sự kiện TransferProgress MỚI NHẤT của mỗi lượt trong một lô.
+
+    Vẽ lại thanh tiến độ 50 lần chỉ để hiện kết quả của lần cuối là phí công và làm
+    cửa sổ giật. Các loại sự kiện khác giữ nguyên thứ tự.
+    """
+    last: dict[str, int] = {}
+    for i, event in enumerate(events):
+        if isinstance(event, TransferProgress):
+            last[event.transfer_id] = i
+    return [e for i, e in enumerate(events)
+            if not isinstance(e, TransferProgress) or last[e.transfer_id] == i]
+
+
+def open_folder(path: Path) -> None:
+    """Mở thư mục bằng trình quản lý file của hệ điều hành."""
+    if sys.platform == "win32":
+        os.startfile(path)  # type: ignore[attr-defined]
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", str(path)])
+    else:
+        subprocess.Popen(["xdg-open", str(path)])
+
+
 class MainWindow:
     """Bốn vùng: danh sách máy · chọn file và gửi · tiến trình · lịch sử đã nhận."""
 
@@ -61,8 +94,8 @@ class MainWindow:
         self.service = service
 
         root.title("Truyền Nhanh")
-        root.geometry("620x560")
-        root.minsize(560, 520)
+        root.geometry("620x600")
+        root.minsize(560, 560)
 
         self.device_name_var = tk.StringVar(value="-")
         self.file_var = tk.StringVar(value="(chưa chọn file)")
@@ -70,11 +103,13 @@ class MainWindow:
         self.progress_var = tk.DoubleVar(value=0)
         self.progress_text_var = tk.StringVar(value="")
         self.status_var = tk.StringVar(value="")
+        self.download_dir_var = tk.StringVar(value="")
 
         self._peers: list[Peer] = []
         self._selected_path: Path | None = None
         self._active_id: str | None = None
         self._started: dict[str, TransferStarted] = {}
+        self._closing = False
 
         self._build_header()
         self._build_peers_area()
@@ -82,6 +117,7 @@ class MainWindow:
         self._build_progress_area()
         self._build_status_bar()
         self._build_history_area()
+        self._refresh_buttons()
 
         # service=None: chỉ xem bố cục tĩnh (không có dữ liệu, không poll)
         if service is not None:
@@ -162,10 +198,23 @@ class MainWindow:
         self.history_tree.column("time", width=70, anchor="center")
         self.history_tree.pack(fill="both", expand=True)
 
+        row = ttk.Frame(box)
+        row.pack(fill="x", pady=(6, 0))
+        ttk.Label(row, text="Lưu tại: ").pack(side="left")
+        ttk.Label(row, textvariable=self.download_dir_var).pack(
+            side="left", fill="x", expand=True)
+        self.change_dir_button = ttk.Button(row, text="Đổi...",
+                                            command=self._on_change_download_dir)
+        self.change_dir_button.pack(side="right")
+        self.open_dir_button = ttk.Button(row, text="Mở thư mục",
+                                          command=self._on_open_download_dir)
+        self.open_dir_button.pack(side="right", padx=(0, 6))
+
     # ---------- Trạng thái ban đầu ----------
     def _load_initial_state(self) -> None:
         """Lấy ảnh chụp hiện tại từ service (docs: list_peers / list_transfers)."""
         self.device_name_var.set(self.service.device_name)
+        self.download_dir_var.set(str(self.service.get_download_dir()))
         self._peers = list(self.service.list_peers())
         self._render_peers()
         for t in reversed(self.service.list_transfers()):  # cũ -> mới
@@ -175,6 +224,7 @@ class MainWindow:
                 self._active_id = t.id
                 self._set_target(t.direction, t.peer_name)
                 self._show_progress(t.done_bytes, t.size, 0.0)
+        self._refresh_buttons()
 
     # ---------- Danh sách máy ----------
     def _selected_peer_id(self) -> str | None:
@@ -197,9 +247,9 @@ class MainWindow:
         self._peers.append(peer)
 
     # ---------- Vùng tiến trình / lịch sử ----------
-    def _set_target(self, direction: Direction, peer_name: str) -> None:
+    def _set_target(self, direction: Direction, peer_name: str, note: str = "") -> None:
         verb = "Đang gửi tới" if direction == Direction.SEND else "Đang nhận từ"
-        self.target_var.set(f"{verb} {peer_name}")
+        self.target_var.set(f"{verb} {peer_name}{note}")
 
     def _show_progress(self, done: int, total: int, bytes_per_second: float) -> None:
         percent = done * 100 / total if total else 0
@@ -217,6 +267,21 @@ class MainWindow:
         if when is None:
             when = datetime.now().strftime("%H:%M")
         self.history_tree.insert("", 0, values=(file_name, peer_name, when))
+
+    def _refresh_buttons(self) -> None:
+        """Nút Hủy chỉ bấm được khi đang có một lượt hiện trên thanh tiến trình."""
+        self.cancel_button.state(["!disabled"] if self._active_id else ["disabled"])
+
+    def has_active_transfer(self) -> bool:
+        return self._active_id is not None
+
+    @property
+    def is_closing(self) -> bool:
+        return self._closing
+
+    def begin_shutdown(self) -> None:
+        """Đánh dấu đang đóng: từ đây không xử lý sự kiện nữa, để khỏi bật hộp thoại cho cửa sổ đã ẩn."""
+        self._closing = True
 
     # ---------- Nút bấm (không chờ mạng — luật 2) ----------
     def _on_choose_file(self) -> None:
@@ -244,6 +309,29 @@ class MainWindow:
     def _on_refresh(self) -> None:
         self.service.refresh_peers()  # trả về ngay; máy tìm thấy báo bằng PeerFound
 
+    def _on_open_download_dir(self) -> None:
+        folder = Path(self.service.get_download_dir())
+        try:
+            folder.mkdir(parents=True, exist_ok=True)  # chưa nhận file nào thì thư mục có thể chưa có
+            open_folder(folder)
+        except OSError as exc:
+            messagebox.showerror("Truyền Nhanh", f"Không mở được thư mục: {exc}",
+                                 parent=self.root)
+
+    def _on_change_download_dir(self) -> None:
+        chosen = filedialog.askdirectory(
+            title="Chọn thư mục nhận file",
+            initialdir=self.download_dir_var.get() or None)
+        if not chosen:
+            return
+        try:
+            self.service.set_download_dir(chosen)
+        except Exception as exc:
+            messagebox.showerror("Truyền Nhanh", f"Không đổi được thư mục: {exc}",
+                                 parent=self.root)
+            return
+        self.download_dir_var.set(str(self.service.get_download_dir()))
+
     def on_send_clicked(self) -> None:
         peer_id = self._selected_peer_id()
         if peer_id is None:
@@ -263,6 +351,7 @@ class MainWindow:
         self._active_id = transfer_id
         self._reset_progress()
         self.target_var.set("Đang chờ bên nhận đồng ý...")
+        self._refresh_buttons()
 
     def on_cancel_clicked(self) -> None:
         if self._active_id is not None:
@@ -270,16 +359,30 @@ class MainWindow:
 
     # ---------- Sự kiện từ service (luật 3) ----------
     def poll_events(self) -> None:
-        """Lấy hết sự kiện đang có trong service.events, xử lý, rồi hẹn gọi lại sau POLL_INTERVAL_MS."""
+        """Lấy sự kiện đang có trong service.events, xử lý, rồi hẹn gọi lại.
+
+        Khác bản T23 ở ba điểm, đều để cửa sổ không bị đơ khi lõi thật bắn sự kiện dồn dập:
+          - mỗi lần lấy tối đa MAX_EVENTS_PER_TICK sự kiện (còn thì poll lại sau BUSY_POLL_MS);
+          - gộp các TransferProgress cùng một lượt, chỉ vẽ lại cái mới nhất;
+          - một sự kiện gây lỗi không làm mất cả lô còn lại hay làm dừng vòng poll.
+        """
+        if self._closing:
+            return
+        batch: list = []
         try:
-            while True:
+            while len(batch) < MAX_EVENTS_PER_TICK:
                 try:
-                    event = self.service.events.get_nowait()
+                    batch.append(self.service.events.get_nowait())
                 except queue.Empty:
                     break
-                self.handle_event(event)
+            for event in coalesce_progress(batch):
+                try:
+                    self.handle_event(event)
+                except Exception:
+                    traceback.print_exc()
         finally:
-            self.root.after(POLL_INTERVAL_MS, self.poll_events)
+            backlog = len(batch) >= MAX_EVENTS_PER_TICK
+            self.root.after(BUSY_POLL_MS if backlog else POLL_INTERVAL_MS, self.poll_events)
 
     def handle_event(self, event) -> None:
         """Cập nhật giao diện theo từng loại sự kiện trong core/events.py."""
@@ -297,8 +400,12 @@ class MainWindow:
         elif isinstance(event, TransferStarted):
             self._started[event.transfer_id] = event
             self._active_id = event.transfer_id
-            self._set_target(event.direction, event.peer_name)
+            note = ""
+            if event.offset and event.size:
+                note = f" (tiếp tục từ {event.offset * 100 // event.size}%)"
+            self._set_target(event.direction, event.peer_name, note)
             self._show_progress(event.offset, event.size, 0.0)
+            self._refresh_buttons()
 
         elif isinstance(event, TransferProgress):
             if event.transfer_id == self._active_id:
@@ -319,6 +426,7 @@ class MainWindow:
                 else:
                     self.target_var.set(event.message or "Truyền file thất bại.")
                     self._reset_progress()
+                self._refresh_buttons()
 
         elif isinstance(event, StatusMessage):
             self.status_var.set(event.text)
@@ -333,19 +441,58 @@ class MainWindow:
             percent = offer_event.resume_offset * 100 // offer_event.size
             text += f"\nTiếp tục từ {percent}%."
         accept = messagebox.askyesno("Có file gửi đến", text, parent=self.root)
-        self.service.respond_to_offer(offer_event.transfer_id, accept)  # luật 4
+        try:
+            self.service.respond_to_offer(offer_event.transfer_id, accept)  # luật 4
+        except Exception as exc:
+            messagebox.showerror("Truyền Nhanh", f"Không trả lời được yêu cầu: {exc}",
+                                 parent=self.root)
 
 
 def run_app(use_fake: bool = False) -> None:
     """Tạo service (thật hoặc giả), start(), mở cửa sổ, mainloop(); đóng cửa sổ thì service.stop()."""
-    service = FakeService() if use_fake else TruyenNhanhService()  # <- MỘT dòng duy nhất
-    service.start()
     root = tk.Tk()
-    MainWindow(root, service)
+    root.withdraw()  # chưa hiện cửa sổ trống nếu service không khởi động được
+    try:
+        service = FakeService() if use_fake else TruyenNhanhService()  # <- MỘT dòng duy nhất
+        service.start()
+    except Exception as exc:  # ví dụ: cổng bị chiếm do đang chạy một bản khác
+        messagebox.showerror(
+            "Truyền Nhanh", f"Không khởi động được lõi mạng:\n{exc}", parent=root)
+        root.destroy()
+        return
+
+    window = MainWindow(root, service)
+    root.deiconify()
 
     def on_close() -> None:
-        service.stop()
-        root.destroy()
+        if window.is_closing:  # bấm đóng lần hai khi đang dọn dẹp
+            return
+        if window.has_active_transfer() and not messagebox.askyesno(
+                "Truyền Nhanh", "Đang truyền file. Thoát sẽ hủy lượt này. Thoát không?",
+                parent=root):
+            return
+        window.begin_shutdown()
+        root.withdraw()  # cửa sổ biến mất ngay, người dùng không thấy nó đơ
+
+        def stop_service() -> None:
+            # service.stop() gửi BYE, dừng luồng; có thể mất vài giây nên chạy ngoài luồng chính.
+            # Nó không gọi Tkinter nên không vi phạm luật 1.
+            try:
+                service.stop()
+            except Exception:
+                traceback.print_exc()
+
+        stopper = threading.Thread(target=stop_service, daemon=True)
+        stopper.start()
+        deadline = time.monotonic() + STOP_TIMEOUT_S
+
+        def wait_then_destroy() -> None:
+            if stopper.is_alive() and time.monotonic() < deadline:
+                root.after(50, wait_then_destroy)
+            else:
+                root.destroy()
+
+        wait_then_destroy()
 
     root.protocol("WM_DELETE_WINDOW", on_close)
     root.mainloop()
