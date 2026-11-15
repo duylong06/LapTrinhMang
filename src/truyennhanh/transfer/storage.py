@@ -104,6 +104,13 @@ def ensure_inside(directory: Path, candidate: Path) -> Path:
     """
     base = directory.resolve()
     resolved = candidate.resolve()
+    try:
+        # Thử resolve toàn bộ (khi file đã tồn tại, đảm bảo an toàn chống symlink)
+        resolved = candidate.resolve(strict=True)
+    except FileNotFoundError:
+        # Nếu file chưa tồn tại (VD: trong lúc tạo file mới), resolve thư mục cha 
+        # để tránh lỗi so sánh chuỗi sai lệch trên Windows
+        resolved = candidate.parent.resolve() / candidate.name
     # `base in resolved.parents` chỉ đúng khi resolved nằm DƯỚI base và KHÁC base
     # (is_relative_to cũng đúng khi hai đường dẫn bằng nhau, tức là ghi đè lên chính thư mục nhận).
     if base not in resolved.parents:
