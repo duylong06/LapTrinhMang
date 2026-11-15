@@ -134,25 +134,41 @@ def finalize(part: Path, download_dir: Path, safe_name: str) -> Path:
     """
     part = ensure_inside(download_dir, Path(part))
 
-    with open(part, "r+b") as f:  # r+b chứ không phải rb: trên Windows fsync cần handle ghi được
+    with open(part, "r+b") as f:
         os.fsync(f.fileno())
 
     for _ in range(_MAX_UNIQUE_ATTEMPTS):
         target = ensure_inside(download_dir, unique_path(download_dir, safe_name))
+        
         try:
             fd = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
-        except FileExistsError:
-            continue  # lượt khác vừa chiếm mất tên này: chọn tên kế tiếp
+        except (FileExistsError, PermissionError):
+            # PermissionError: Trên Windows, nếu 2 luồng tạo file cùng lúc, 
+            # luồng sau có thể bị báo lỗi quyền truy cập thay vì FileExistsError.
+            continue  # Thử tên khác
+            
         os.close(fd)
+        
         try:
             os.replace(part, target)
+        except PermissionError:
+            # Windows: File rỗng vừa tạo bị antivirus/luồng khác lock.
+            # Dọn rác và nhảy sang thử tên khác (VD: trung (1).txt).
+            try:
+                os.unlink(target)
+            except OSError:
+                pass
+            continue
         except OSError:
+            # Các lỗi nghiêm trọng khác (VD: ổ đĩa đầy)
             try:
                 os.unlink(target)
             except OSError:
                 pass
             raise
+            
         return target
+        
     raise FileExistsError(f"Không chiếm được tên trống cho {safe_name!r} trong {download_dir}")
 
 
