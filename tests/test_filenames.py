@@ -7,8 +7,8 @@ import unicodedata
 
 import pytest
 
-from src.truyennhanh.protocol.constants import FALLBACK_FILENAME, MAX_FILENAME_BYTES
-from src.truyennhanh.transfer.filenames import sanitize_filename
+from truyennhanh.protocol.constants import FALLBACK_FILENAME, MAX_FILENAME_BYTES
+from truyennhanh.transfer.filenames import sanitize_filename
 
 
 def _byte_length(text: str) -> int:
