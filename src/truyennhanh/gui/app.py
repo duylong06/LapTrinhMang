@@ -13,6 +13,7 @@ BỐN LUẬT CỦA MÔ HÌNH LUỒNG — đọc docs/02 mục 4 trước khi vi�
 """
 from __future__ import annotations
 
+import ipaddress
 import os
 import queue
 import subprocess
@@ -61,6 +62,44 @@ def format_speed(bytes_per_second: float) -> str:
     return f"{bytes_per_second / 1024:.0f} KB/s"
 
 
+def format_eta(seconds: float) -> str:
+    """12 -> '12 giây', 65 -> '1 phút 05 giây', 4000 -> '1 giờ 06 phút'."""
+    total = max(int(seconds), 0)
+    if total >= 3600:
+        return f"{total // 3600} giờ {total % 3600 // 60:02d} phút"
+    if total >= 60:
+        return f"{total // 60} phút {total % 60:02d} giây"
+    return f"{total} giây"
+
+
+def parse_host_port(text: str) -> tuple[str, int | None]:
+    """'192.168.1.20' hoặc '192.168.1.20:50506' -> (ip, cổng hoặc None).
+
+    Sai thì ném ValueError kèm câu tiếng Việt để hiện thẳng cho người dùng; nhờ vậy lỗi
+    gõ nhầm được báo ngay ở giao diện thay vì đợi lõi mạng từ chối.
+    """
+    value = text.strip()
+    if not value:
+        raise ValueError("Chưa nhập địa chỉ IP.")
+    host, port_text = value, None
+    if value.count(":") == 1:  # nhiều hơn một dấu ':' là IPv6, để ipaddress tự xử lý
+        host, port_text = (part.strip() for part in value.split(":"))
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        raise ValueError(f"\"{host}\" không phải địa chỉ IP hợp lệ (ví dụ 192.168.1.20).") from None
+    if ip.version != 4:
+        raise ValueError("Hiện chỉ hỗ trợ địa chỉ IPv4.")
+    if ip.is_unspecified or ip.is_multicast or str(ip) == "255.255.255.255":
+        raise ValueError(f"{ip} không phải địa chỉ của một máy cụ thể.")
+    port = None
+    if port_text is not None:
+        if not port_text.isdigit() or not 1 <= int(port_text) <= 65535:
+            raise ValueError("Cổng phải là số từ 1 đến 65535.")
+        port = int(port_text)
+    return str(ip), port
+
+
 def coalesce_progress(events: list) -> list:
     """Chỉ giữ sự kiện TransferProgress MỚI NHẤT của mỗi lượt trong một lô.
 
@@ -94,8 +133,8 @@ class MainWindow:
         self.service = service
 
         root.title("Truyền Nhanh")
-        root.geometry("620x600")
-        root.minsize(560, 560)
+        root.geometry("640x660")
+        root.minsize(600, 620)
 
         self.device_name_var = tk.StringVar(value="-")
         self.file_var = tk.StringVar(value="(chưa chọn file)")
@@ -104,6 +143,9 @@ class MainWindow:
         self.progress_text_var = tk.StringVar(value="")
         self.status_var = tk.StringVar(value="")
         self.download_dir_var = tk.StringVar(value="")
+        self.detail_var = tk.StringVar(value="")        # "14,9 / 24 MB" cạnh dòng tiến trình
+        self.peers_hint_var = tk.StringVar(value="")    # gợi ý khi danh sách máy còn trống
+        self._history_paths: dict[str, Path | None] = {}  # dòng lịch sử -> đường dẫn file đã lưu
 
         self._peers: list[Peer] = []
         self._selected_path: Path | None = None
@@ -118,6 +160,9 @@ class MainWindow:
         self._build_status_bar()
         self._build_history_area()
         self._refresh_buttons()
+        self._render_peers()
+        root.bind("<Control-o>", lambda _e: self._on_choose_file())  # phím tắt: chọn file
+        root.bind("<F5>", lambda _e: self._on_refresh())            # phím tắt: làm mới
 
         # service=None: chỉ xem bố cục tĩnh (không có dữ liệu, không poll)
         if service is not None:
@@ -141,6 +186,8 @@ class MainWindow:
         self.peer_list = tk.Listbox(box, height=5, activestyle="none",
                                     exportselection=False)
         self.peer_list.pack(fill="x")
+        ttk.Label(box, textvariable=self.peers_hint_var,
+                  foreground="gray").pack(anchor="w")
 
         row = ttk.Frame(box)
         row.pack(fill="x", pady=(6, 0))
@@ -168,13 +215,16 @@ class MainWindow:
         box = ttk.LabelFrame(self.root, text="Tiến trình", padding=8)
         box.pack(fill="x", padx=12, pady=4)
 
-        ttk.Label(box, textvariable=self.target_var).pack(anchor="w")
+        top = ttk.Frame(box)
+        top.pack(fill="x")
+        ttk.Label(top, textvariable=self.target_var).pack(side="left")
+        ttk.Label(top, textvariable=self.detail_var).pack(side="right")
         row = ttk.Frame(box)
         row.pack(fill="x", pady=4)
         self.progress_bar = ttk.Progressbar(row, variable=self.progress_var,
                                             maximum=100)
         self.progress_bar.pack(side="left", fill="x", expand=True)
-        ttk.Label(row, textvariable=self.progress_text_var, width=30,
+        ttk.Label(row, textvariable=self.progress_text_var, width=38,
                   anchor="e").pack(side="left", padx=(8, 0))
         self.cancel_button = ttk.Button(box, text="Hủy",
                                         command=self.on_cancel_clicked)
@@ -189,13 +239,16 @@ class MainWindow:
         box.pack(fill="both", expand=True, padx=12, pady=(4, 12))
 
         self.history_tree = ttk.Treeview(
-            box, columns=("file", "from", "time"), show="headings", height=5)
+            box, columns=("file", "from", "size", "time"), show="headings", height=5)
         self.history_tree.heading("file", text="Tên file")
         self.history_tree.heading("from", text="Từ máy")
+        self.history_tree.heading("size", text="Kích thước")
         self.history_tree.heading("time", text="Lúc")
-        self.history_tree.column("file", width=260)
-        self.history_tree.column("from", width=160)
-        self.history_tree.column("time", width=70, anchor="center")
+        self.history_tree.column("file", width=230)
+        self.history_tree.column("from", width=140)
+        self.history_tree.column("size", width=80, anchor="e")
+        self.history_tree.column("time", width=60, anchor="center")
+        self.history_tree.bind("<Double-1>", self._on_history_open)  # bấm đúp: mở thư mục chứa file
         self.history_tree.pack(fill="both", expand=True)
 
         row = ttk.Frame(box)
@@ -219,7 +272,7 @@ class MainWindow:
         self._render_peers()
         for t in reversed(self.service.list_transfers()):  # cũ -> mới
             if t.direction == Direction.RECEIVE and t.state == TransferState.DONE:
-                self._add_history(t.file_name, t.peer_name, "")
+                self._add_history(t.file_name, t.peer_name, t.size, "", t.saved_path)
             elif t.state == TransferState.ACTIVE:
                 self._active_id = t.id
                 self._set_target(t.direction, t.peer_name)
@@ -235,9 +288,12 @@ class MainWindow:
         selected = self._selected_peer_id()
         self.peer_list.delete(0, "end")
         for i, peer in enumerate(self._peers):
-            self.peer_list.insert("end", f"●  {peer.name:<18} {peer.ip}")
+            mark = "  (thêm tay)" if peer.manual else ""
+            self.peer_list.insert("end", f"●  {peer.name:<18} {peer.ip}{mark}")
             if peer.id == selected:
                 self.peer_list.selection_set(i)
+        self.peers_hint_var.set(
+            "" if self._peers else 'Chưa thấy máy nào. Bấm "Làm mới" hoặc thêm máy theo IP.')
 
     def _upsert_peer(self, peer: Peer) -> None:
         for i, old in enumerate(self._peers):
@@ -256,17 +312,22 @@ class MainWindow:
         self.progress_var.set(percent)
         text = f"{percent:.0f}%   {format_speed(bytes_per_second)}"
         if bytes_per_second > 0:
-            text += f"   còn {int((total - done) / bytes_per_second)} giây"
+            text += f"   còn {format_eta((total - done) / bytes_per_second)}"
         self.progress_text_var.set(text)
+        self.detail_var.set(f"{format_size(done)} / {format_size(total)}" if total else "")
 
     def _reset_progress(self) -> None:
         self.progress_var.set(0)
         self.progress_text_var.set("")
+        self.detail_var.set("")
 
-    def _add_history(self, file_name: str, peer_name: str, when: str | None = None) -> None:
+    def _add_history(self, file_name: str, peer_name: str, size: int | None = None,
+                     when: str | None = None, saved_path: Path | None = None) -> None:
         if when is None:
             when = datetime.now().strftime("%H:%M")
-        self.history_tree.insert("", 0, values=(file_name, peer_name, when))
+        size_text = format_size(size) if size else ""
+        iid = self.history_tree.insert("", 0, values=(file_name, peer_name, size_text, when))
+        self._history_paths[iid] = saved_path
 
     def _refresh_buttons(self) -> None:
         """Nút Hủy chỉ bấm được khi đang có một lượt hiện trên thanh tiến trình."""
@@ -289,17 +350,32 @@ class MainWindow:
         path = filedialog.askopenfilename(title="Chọn file để gửi")
         if path:
             self._selected_path = Path(path)
-            self.file_var.set(self._selected_path.name)
+            try:
+                size_text = f" ({format_size(self._selected_path.stat().st_size)})"
+            except OSError:
+                size_text = ""
+            self.file_var.set(f"{self._selected_path.name}{size_text}")
 
     def _on_add_ip(self) -> None:
-        ip = simpledialog.askstring(
-            "Thêm máy theo IP", "Nhập địa chỉ IP (ví dụ 192.168.1.20):",
-            parent=self.root)
-        if not ip:
-            return
+        initial = ""
+        while True:  # gõ sai thì báo lỗi rồi hỏi lại, giữ nguyên chữ đã gõ để sửa
+            text = simpledialog.askstring(
+                "Thêm máy theo IP",
+                "Nhập địa chỉ IP của máy kia (ví dụ 192.168.1.20,\n"
+                "hoặc kèm cổng: 192.168.1.20:50506):",
+                initialvalue=initial, parent=self.root)
+            if not text:
+                return
+            try:
+                ip, port = parse_host_port(text)
+                break
+            except ValueError as exc:
+                messagebox.showwarning("Truyền Nhanh", str(exc), parent=self.root)
+                initial = text
         try:
-            peer = self.service.add_manual_peer(ip.strip())
-        except Exception as exc:  # lỗi định dạng IP... do lõi quyết định
+            peer = (self.service.add_manual_peer(ip) if port is None
+                    else self.service.add_manual_peer(ip, port))
+        except Exception as exc:  # lõi có thể từ chối vì lý do riêng
             messagebox.showerror("Truyền Nhanh", f"Không thêm được máy: {exc}",
                                  parent=self.root)
             return
@@ -307,16 +383,32 @@ class MainWindow:
         self._render_peers()
 
     def _on_refresh(self) -> None:
+        if self.service is None:
+            return
         self.service.refresh_peers()  # trả về ngay; máy tìm thấy báo bằng PeerFound
 
-    def _on_open_download_dir(self) -> None:
-        folder = Path(self.service.get_download_dir())
+    def _open_folder_safely(self, folder: Path, create: bool = False) -> None:
         try:
-            folder.mkdir(parents=True, exist_ok=True)  # chưa nhận file nào thì thư mục có thể chưa có
+            if create:
+                folder.mkdir(parents=True, exist_ok=True)  # chưa nhận file nào thì thư mục có thể chưa có
             open_folder(folder)
         except OSError as exc:
             messagebox.showerror("Truyền Nhanh", f"Không mở được thư mục: {exc}",
                                  parent=self.root)
+
+    def _on_open_download_dir(self) -> None:
+        self._open_folder_safely(Path(self.service.get_download_dir()), create=True)
+
+    def _on_history_open(self, _event=None) -> None:
+        """Bấm đúp một dòng "Đã nhận" thì mở thư mục chứa file đó."""
+        selection = self.history_tree.selection()
+        if not selection:
+            return
+        saved = self._history_paths.get(selection[0])
+        if saved is None:  # dòng nạp lúc mở cửa sổ có thể không biết đường dẫn
+            self._on_open_download_dir()
+        else:
+            self._open_folder_safely(Path(saved).parent)
 
     def _on_change_download_dir(self) -> None:
         chosen = filedialog.askdirectory(
@@ -341,6 +433,11 @@ class MainWindow:
         if self._selected_path is None:
             messagebox.showinfo("Truyền Nhanh", "Hãy chọn file cần gửi.",
                                 parent=self.root)
+            return
+        if not self._selected_path.is_file():
+            messagebox.showwarning(
+                "Truyền Nhanh", "File này không còn tồn tại hoặc không phải file thường. "
+                "Hãy chọn lại.", parent=self.root)
             return
         try:
             transfer_id = self.service.send_file(peer_id, self._selected_path)
@@ -415,7 +512,8 @@ class MainWindow:
         elif isinstance(event, TransferFinished):
             started = self._started.pop(event.transfer_id, None)
             if event.ok and event.direction == Direction.RECEIVE and started:
-                self._add_history(started.file_name, started.peer_name)
+                self._add_history(started.file_name, started.peer_name, started.size,
+                                  saved_path=event.saved_path)
             if event.transfer_id == self._active_id:
                 self._active_id = None
                 if event.ok:
