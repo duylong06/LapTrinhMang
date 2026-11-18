@@ -36,7 +36,7 @@ from truyennhanh.core.events import (
     TransferStarted,
 )
 from truyennhanh.core.models import Direction, Peer, TransferState
-from truyennhanh.core.service import TruyenNhanhService
+from truyennhanh.core.service import create_service
 from truyennhanh.gui.fake_service import FakeService
 
 POLL_INTERVAL_MS = 100
@@ -551,7 +551,7 @@ def run_app(use_fake: bool = False) -> None:
     root = tk.Tk()
     root.withdraw()  # chưa hiện cửa sổ trống nếu service không khởi động được
     try:
-        service = FakeService() if use_fake else TruyenNhanhService()  # <- MỘT dòng duy nhất
+        service = FakeService() if use_fake else create_service()  # <- MỘT dòng duy nhất
         service.start()
     except Exception as exc:  # ví dụ: cổng bị chiếm do đang chạy một bản khác
         messagebox.showerror(

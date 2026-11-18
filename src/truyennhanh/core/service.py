@@ -36,12 +36,15 @@ from truyennhanh.config import Config, default_download_dir
 from truyennhanh.core.events import (
     Emit,
     Event,
+    OfferReceived,
     PeerFound,
     StatusMessage,
     TransferFinished,
+    TransferProgress,
+    TransferStarted,
 )
 from truyennhanh.core.models import Direction, Peer, Transfer, TransferState
-from truyennhanh.protocol.constants import TRANSFER_PORT_DEFAULT, Reason
+from truyennhanh.protocol.constants import DECISION_TIMEOUT_S, TRANSFER_PORT_DEFAULT, Reason
 
 STOP_JOIN_TIMEOUT_S = 5.0
 """Thời gian tối đa chờ MỖI luồng tự kết thúc trong stop().
@@ -378,7 +381,7 @@ class TruyenNhanhService:
             path=path,
             as_name=as_name,
             chunk_size=self.config.chunk_size,
-            emit=self._emit,
+            emit=self._emit_co_ghi_so,
             cancelled=cancelled,
         )
         self._spawn(f"gui-{transfer_id[:8]}", self._run_send, job)
@@ -470,6 +473,44 @@ class TruyenNhanhService:
                 message=f"Lỗi khi gửi: {e}",
             )
 
+    def _emit_co_ghi_so(self, event: Event) -> None:
+        """Phát sự kiện, đồng thời cập nhật sổ lượt truyền.
+
+        Bên gửi (R3) và bên nhận (R4) chỉ biết phát sự kiện; chúng không được
+        đụng vào sổ của lõi. Hàm này là chỗ duy nhất dịch sự kiện thành thay
+        đổi trong sổ, nên list_transfers() luôn khớp với những gì giao diện đã
+        thấy — kể cả khi giao diện mới mở và phải vẽ lại từ đầu.
+
+        TransferFinished được đổi thành _finish thay vì phát thẳng, vì _finish
+        vừa cập nhật sổ vừa phát sự kiện, và chống phát trùng.
+        """
+        if isinstance(event, TransferStarted):
+            self._update(event.transfer_id, state=TransferState.ACTIVE, done_bytes=event.offset)
+            self._emit(event)
+
+        elif isinstance(event, TransferProgress):
+            self._update(event.transfer_id, done_bytes=event.done_bytes)
+            self._emit(event)
+
+        elif isinstance(event, TransferFinished):
+            if event.ok:
+                # Tiến độ bị giới hạn 10 lần/giây nên lần báo cuối gần như luôn
+                # thiếu vài khối. Xong rồi thì số byte đã truyền đúng bằng size.
+                with self._lock:
+                    transfer = self._transfers.get(event.transfer_id)
+                    if transfer is not None:
+                        transfer.done_bytes = transfer.size
+            self._finish(
+                event.transfer_id,
+                ok=event.ok,
+                reason=event.reason,
+                saved_path=event.saved_path,
+                message=event.message,
+            )
+
+        else:
+            self._emit(event)
+
     def _register_decision(self, transfer_id: str) -> _Decision:
         """Luồng nhận gọi trước khi phát OfferReceived, rồi chờ trên kết quả trả về."""
         decision = _Decision()
@@ -535,3 +576,81 @@ class TruyenNhanhService:
             saved_path=saved_path,
             message=message,
         ))
+
+
+# --------------------------------------------------------------------------- T25: ghép thật
+
+def create_service(config: Config | None = None) -> TruyenNhanhService:
+    """Dựng một lõi đã cắm đủ ba thành phần mạng thật — nhiệm vụ T25.
+
+    Đây là điểm hội tụ của dự án. Dòng lệnh và giao diện chỉ cần gọi hàm này
+    thay vì tự dựng từng mảnh:
+
+        service = create_service(Config(download_dir=Path("~/Downloads")))
+        service.start()
+
+    Vì sao không đặt thẳng giá trị mặc định cho ba tham số của __init__: bên
+    nhận cần một hàm ask_user biết hỏi lõi, mà lõi lúc đó chưa tồn tại. Phải
+    dựng lõi trước, rồi mới dựng bên nhận quanh nó.
+
+    Ba lớp thật được nhập bên trong hàm, không nhập ở đầu file: lõi phải chạy
+    được cả khi chỉ có thành phần giả (kiểm thử), và nhập muộn thì một lỗi cú
+    pháp trong phần mạng của người khác không làm chết cả module lõi.
+    """
+    from truyennhanh.discovery.discovery import Discovery as _Discovery
+    from truyennhanh.discovery.peer_table import PeerTable
+    from truyennhanh.transfer.receiver import FileReceiverServer
+    from truyennhanh.transfer.sender import TcpSender
+
+    service = TruyenNhanhService(config)
+
+    def ask_user(offer, ten_sach: str, offset: int) -> bool:
+        """Bên nhận gọi hàm này và CHỜ tối đa 60 giây.
+
+        Ghi lượt nhận vào sổ, phát OfferReceived cho giao diện, rồi chờ người
+        dùng bấm Nhận hay Từ chối (service.respond_to_offer mở khóa).
+        """
+        service._track(Transfer(
+            id=offer.transfer_id,
+            direction=Direction.RECEIVE,
+            peer_name=offer.sender_name,
+            file_name=ten_sach,
+            size=offer.size,
+            done_bytes=offset,
+        ))
+        decision = service._register_decision(offer.transfer_id)
+        service._emit(OfferReceived(
+            transfer_id=offer.transfer_id,
+            sender_id=offer.sender_id,
+            sender_name=offer.sender_name,
+            file_name=ten_sach,
+            size=offer.size,
+            resume_offset=offset,
+        ))
+        try:
+            tra_loi = decision.wait(DECISION_TIMEOUT_S)
+        finally:
+            service._forget_decision(offer.transfer_id)
+        return tra_loi is True
+
+    # Chiều nhận dùng chung đúng hàm ghi sổ với chiều gửi, nên hai chiều không
+    # bao giờ lệch nhau về cách cập nhật trạng thái.
+    #
+    # get_download_dir là hàm chứ không phải đường dẫn, theo đúng yêu cầu của R4:
+    # set_download_dir() chỉ đổi thư mục trong lõi chứ không sửa config, nên bên
+    # nhận phải hỏi lại trước MỖI lượt thay vì nhớ một giá trị từ lúc khởi tạo.
+    service._receiver = FileReceiverServer(
+        service.config,
+        service._emit_co_ghi_so,
+        ask_user,
+        get_download_dir=service.get_download_dir,
+    )
+    service._sender = TcpSender(service._id, service._device_name)
+    service._discovery = _Discovery(
+        service._id,
+        service._device_name,
+        service.config.transfer_port,
+        PeerTable(),
+        service._emit,
+    )
+    return service

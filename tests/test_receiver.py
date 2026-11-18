@@ -499,8 +499,12 @@ def test_slow_user_decision_does_not_block_other_connections(server_factory):
     port = server.start()
     try:
         with _connect(port) as slow, _connect(port) as fast:
-            slow.sendall(_offer_frame(_offer_fields(transfer_id="t-slow", name="cham.txt")))
-            fast.sendall(_offer_frame(_offer_fields(transfer_id="t-fast", name="nhanh.txt")))
+            # Hai mã băm KHÁC nhau: cùng mã băm thì lượt sau nhận REJECT busy
+            # theo docs/03 mục 4.9 bước 8, mà bài này không kiểm điều đó.
+            slow.sendall(_offer_frame(_offer_fields(
+                transfer_id="t-slow", name="cham.txt", sha256="a" * 64)))
+            fast.sendall(_offer_frame(_offer_fields(
+                transfer_id="t-fast", name="nhanh.txt", sha256="b" * 64)))
             assert _read_accept(fast, "t-fast") == 0   # máy sau được trả lời trước
             gate.set()
             assert _read_accept(slow, "t-slow") == 0
@@ -600,8 +604,10 @@ def test_cancel_only_affects_the_matching_transfer(server_factory):
     port = server.start()
     try:
         with _connect(port) as a, _connect(port) as b:
-            a.sendall(_offer_frame(_offer_fields(transfer_id="t-a")))
-            b.sendall(_offer_frame(_offer_fields(transfer_id="t-b")))
+            # Mã băm khác nhau để cả hai lượt cùng được nhận; cùng mã băm thì
+            # lượt sau bị REJECT busy (docs/03 mục 4.9 bước 8).
+            a.sendall(_offer_frame(_offer_fields(transfer_id="t-a", sha256="a" * 64)))
+            b.sendall(_offer_frame(_offer_fields(transfer_id="t-b", sha256="b" * 64)))
             assert entered.acquire(timeout=2)
             assert entered.acquire(timeout=2)
             server.cancel("t-a")
