@@ -124,8 +124,17 @@ def test_cli_without_command_prints_help(capsys):
     assert "scan" in capsys.readouterr().out
 
 
-def test_cli_unimplemented_command_reports_task(capsys):
-    from truyennhanh.cli.main import main
+def test_cli_da_cai_dat_du_bon_lenh():
+    """T17 và T30 đã xong: không lệnh nào còn ném NotImplementedError.
 
-    assert main(["scan"]) == 2
-    assert "T17" in capsys.readouterr().out
+    Trước đây bài này kiểm điều ngược lại (lệnh `scan` trả về mã 2 kèm chữ
+    "T17") — đó là trạng thái khung của tuần 2. Giữ nguyên bài cũ thì mỗi lần
+    cài xong một lệnh lại hỏng một bài test.
+    """
+    import inspect
+
+    from truyennhanh.cli.main import COMMANDS
+
+    assert set(COMMANDS) == {"scan", "receive", "send", "ui"}
+    for ten, ham in COMMANDS.items():
+        assert "NotImplementedError" not in inspect.getsource(ham), f"lệnh {ten} chưa cài đặt"

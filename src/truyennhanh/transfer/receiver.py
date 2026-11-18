@@ -56,7 +56,15 @@ from truyennhanh.protocol.messages import (
     parse_offer,
 )
 from truyennhanh.transfer.filenames import sanitize_filename
-from truyennhanh.transfer.storage import finalize, part_path
+from truyennhanh.transfer.hashing import sha256_prefix
+from truyennhanh.transfer.storage import (
+    FileLocks,
+    cleanup_old_parts,
+    finalize,
+    has_free_space,
+    part_path,
+    resume_offset,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -85,6 +93,8 @@ DECISION_TOLERANCE_S = 0.5
 _REJECT_MESSAGES = {
     Reason.USER_DECLINED: "Người nhận đã từ chối.",
     Reason.TIMEOUT: "Người nhận không trả lời kịp.",
+    Reason.BUSY: "Máy nhận đang nhận đúng file này ở một lượt khác.",
+    Reason.INSUFFICIENT_SPACE: "Ổ đĩa của máy nhận không còn đủ chỗ trống.",
 }
 
 
@@ -154,6 +164,19 @@ class FileReceiverServer:
         self._connections: set[socket.socket] = set()
         self._threads: set[threading.Thread] = set()
 
+        # T28 bước 8 mục 4.9: không cho hai lượt cùng sha256 ghi vào một .part.
+        # Khóa theo mã băm vì .part được đặt tên theo mã băm, nên hai máy gửi
+        # cùng một file với hai tên khác nhau vẫn đụng đúng một file.
+        self._locks = FileLocks()
+
+        # T27, docs/03 mục 4.5: (sender_id, sha256) mà người dùng đã đồng ý trong
+        # lần chạy này. Nối lại để truyền tiếp thì tự đồng ý, không hỏi lại.
+        #
+        # Không chỉ để đỡ phiền: mục 4.7 ghi rõ bên gửi chỉ chờ ACCEPT 65 giây,
+        # mà băm lại phần đã có cộng thời gian người dùng suy nghĩ lần hai thì
+        # rất dễ vượt mốc đó và lượt truyền hỏng hẳn.
+        self._auto_accept: set[tuple[str, str]] = set()
+
     @property
     def port(self) -> int:
         """Cổng thực tế máy chủ đang lắng nghe. Ném RuntimeError nếu chưa start()."""
@@ -212,6 +235,17 @@ class FileReceiverServer:
             target=self._accept_loop, args=(sock,), name="receiver-accept", daemon=True
         )
         self._accept_thread.start()
+
+        # T37: dọn .part bỏ quên từ những lần chạy trước. Làm sau khi đã lắng
+        # nghe xong để một thư mục nhận chậm không làm trễ việc mở cổng, và
+        # nuốt mọi lỗi vì dọn dẹp thất bại không phải lý do để không nhận file.
+        try:
+            removed = cleanup_old_parts(self._download_dir)
+            if removed:
+                self._emit(StatusMessage(f"Đã dọn {removed} file .part quá hạn."))
+        except OSError:
+            _log.warning("Không dọn được .part cũ", exc_info=True)
+
         return self._port
 
     def stop(self) -> None:
@@ -378,34 +412,80 @@ class FileReceiverServer:
         mà không ảnh hưởng máy khác.
         """
         safe_name = sanitize_filename(offer.name)
-        # TODO (T28): FileLocks.acquire(offer.sha256) -> không được thì REJECT busy;
-        #             has_free_space(thư mục nhận, offer.size - offset) -> không đủ thì REJECT insufficient_space.
-        offset = self._resume_offset(offer)
 
-        started = time.monotonic()
-        accepted = self._ask_user(offer, safe_name, offset)
-        waited = time.monotonic() - started
-
-        with self._lock:
-            session = self._sessions.get(conn)
-        if session is not None and session.cancel_reason is not None:
-            return  # đã bị hủy trong lúc chờ người dùng: bên gửi đã nhận CANCEL, không ACCEPT nữa
-
-        if not accepted:
-            reason = _decline_reason(waited)
-            self._send_quietly(conn, addr, FrameType.REJECT,
-                               make_reject(offer.transfer_id, reason, _REJECT_MESSAGES[reason]))
+        # T28 bước 8: giữ khóa TRƯỚC khi đọc .part. Đọc trước rồi mới khóa thì
+        # hai lượt cùng mã băm có thể cùng đọc ra một offset rồi cùng ghi đè nhau.
+        if not self._locks.acquire(offer.sha256):
+            self._reject_with(conn, addr, offer, Reason.BUSY)
             return
 
-        if not self._send_quietly(conn, addr, FrameType.ACCEPT, make_accept(offer.transfer_id, offset)):
-            self._emit(TransferFinished(offer.transfer_id, Direction.RECEIVE, False, Reason.TIMEOUT, None,
-                                        "Máy gửi đã ngắt kết nối trước khi nhận được câu trả lời."))
-            return
-        self._receive_file(conn, addr, offer, safe_name, offset)
+        try:
+            offset = self._resume_offset(offer)
+
+            # T28 bước 7: chỉ cần chỗ cho phần CÒN LẠI, phần đã nằm trong .part
+            # thì đã chiếm chỗ rồi.
+            if not has_free_space(self._download_dir, offer.size - offset):
+                self._reject_with(conn, addr, offer, Reason.INSUFFICIENT_SPACE)
+                return
+
+            # T27 mục 4.5: đúng file này từ đúng máy này, người dùng đã đồng ý
+            # rồi thì không hỏi lại. Mọi trường hợp khác PHẢI hỏi.
+            dau_moi = (offer.sender_id, offer.sha256)
+            with self._lock:
+                tu_dong = dau_moi in self._auto_accept
+
+            if tu_dong:
+                accepted, waited = True, 0.0
+            else:
+                started = time.monotonic()
+                accepted = self._ask_user(offer, safe_name, offset)
+                waited = time.monotonic() - started
+
+            with self._lock:
+                session = self._sessions.get(conn)
+            if session is not None and session.cancel_reason is not None:
+                return  # đã bị hủy trong lúc chờ người dùng: bên gửi đã nhận CANCEL, không ACCEPT nữa
+
+            if not accepted:
+                reason = _decline_reason(waited)
+                self._send_quietly(conn, addr, FrameType.REJECT,
+                                   make_reject(offer.transfer_id, reason, _REJECT_MESSAGES[reason]))
+                return
+
+            if not self._send_quietly(conn, addr, FrameType.ACCEPT, make_accept(offer.transfer_id, offset)):
+                self._emit(TransferFinished(offer.transfer_id, Direction.RECEIVE, False, Reason.TIMEOUT, None,
+                                            "Máy gửi đã ngắt kết nối trước khi nhận được câu trả lời."))
+                return
+
+            # Ghi nhớ SAU khi đã ACCEPT: người dùng đồng ý mà kết nối đứt ngay
+            # thì lần nối lại tiếp theo mới được tự đồng ý.
+            with self._lock:
+                self._auto_accept.add(dau_moi)
+
+            outcome = self._receive_file(conn, addr, offer, safe_name, offset)
+
+            # Chỉ quên dấu mốc khi lượt đã khép lại HẲN: nhận xong, hoặc mã băm
+            # lệch nên .part đã bị xóa. Mọi kết thúc còn giữ .part (mất kết nối,
+            # thiếu byte, bị huỷ) đều có thể truyền tiếp, nên giữ dấu mốc lại —
+            # quên ở đây thì lần nối lại sẽ hỏi người dùng lần nữa, đúng thứ mà
+            # mục 4.5 bảo nên tránh.
+            if outcome.ok or outcome.reason is Reason.HASH_MISMATCH:
+                with self._lock:
+                    self._auto_accept.discard(dau_moi)
+        finally:
+            # Nhả trên MỌI đường thoát, kể cả khi kết nối đứt giữa chừng: không
+            # nhả thì mã băm đó bị khóa vĩnh viễn và lần truyền tiếp sau sẽ nhận
+            # REJECT busy mãi mãi.
+            self._locks.release(offer.sha256)
+
+    def _reject_with(self, conn: socket.socket, addr: tuple, offer: Offer, reason: Reason) -> None:
+        """REJECT một OFFER hợp lệ nhưng không phục vụ được lúc này (bận, hết chỗ)."""
+        self._send_quietly(conn, addr, FrameType.REJECT,
+                           make_reject(offer.transfer_id, reason, _REJECT_MESSAGES[reason]))
 
     # ------------------------------------------------------------------ nhận dữ liệu (T21)
 
-    def _receive_file(self, conn: socket.socket, addr: tuple, offer: Offer, safe_name: str, offset: int) -> None:
+    def _receive_file(self, conn: socket.socket, addr: tuple, offer: Offer, safe_name: str, offset: int) -> "_Outcome":
         """Trạng thái 3 và 4 của docs/03 mục 4.4: nhận DATA vào .part, nhận DONE, kiểm tra, trả RESULT.
 
         Phát TransferStarted rồi đúng MỘT TransferFinished, dù kết thúc kiểu nào: nếu không, giao diện
@@ -434,12 +514,29 @@ class FileReceiverServer:
             saved_path=outcome.saved_path,
             message=outcome.message,
         ))
+        return outcome
 
     def _receive_data(self, conn: socket.socket, addr: tuple, offer: Offer, safe_name: str, offset: int) -> _Outcome:
         download_dir = self._download_dir  # đọc mỗi lượt: người dùng có thể đổi thư mục nhận
         part = part_path(download_dir, offer.sha256)
-        state = _Receiving(offer, offset, offer.size - offset, hashlib.sha256(), time.monotonic())
-        # TODO (T27): offset != 0 thì nạp phần đã có trong .part vào state.hasher (docs/03 mục 4.5)
+        # T27 (docs/03 mục 4.5): truyền tiếp thì phải nạp phần đã có trong .part
+        # vào bộ băm trước, rồi mới .update() tiếp các khối mới. Bắt đầu bằng một
+        # bộ băm rỗng khi offset khác 0 thì mã băm cuối chắc chắn lệch, bước kiểm
+        # tra sẽ báo hash_mismatch và xóa mất .part đang dở.
+        if offset > 0:
+            try:
+                hasher = sha256_prefix(part, offset)
+            except (OSError, ValueError):
+                # Không băm lại được thì .part không đáng tin: bỏ, nhận lại từ đầu.
+                _log.warning("Không băm lại được .part của %s, nhận lại từ đầu",
+                             offer.sha256[:12])
+                _remove_quietly(part)
+                offset = 0
+                hasher = hashlib.sha256()
+        else:
+            hasher = hashlib.sha256()
+
+        state = _Receiving(offer, offset, offer.size - offset, hasher, time.monotonic())
 
         try:
             out = open(part, "wb" if offset == 0 else "ab")
@@ -561,9 +658,16 @@ class FileReceiverServer:
         ))
 
     def _resume_offset(self, offer: Offer) -> int:
-        """Vị trí bắt đầu nhận. TODO (T27): dùng storage.resume_offset (docs/03 mục 4.5).
-        Tới lúc đó luôn nhận từ đầu."""
-        return 0
+        """Vị trí bắt đầu nhận, theo bảng ở docs/03 mục 4.5 (T27).
+
+        Một .part hỏng không được làm hỏng cả lượt nhận: đọc không nổi thì nhận
+        lại từ đầu, vì nhận thừa vẫn ra file đúng, còn nhận thiếu thì không.
+        """
+        try:
+            return resume_offset(self._download_dir, offer.sha256, offer.size)
+        except (OSError, ValueError):
+            _log.warning("Không đọc được .part của %s, nhận lại từ đầu", offer.sha256[:12])
+            return 0
 
     # ------------------------------------------------------------------ gửi, hủy, đóng
 

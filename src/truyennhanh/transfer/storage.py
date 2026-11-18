@@ -10,6 +10,9 @@ Phụ trách: R4 · Nhiệm vụ: T21 (tuần 2), T27, T28 (tuần 3), T37 (tu�
 from __future__ import annotations
 
 import os, re
+import shutil
+import threading
+import time
 from pathlib import Path
 
 from truyennhanh.protocol.constants import (
@@ -18,6 +21,13 @@ from truyennhanh.protocol.constants import (
     PART_SUFFIX,
     SHA256_HEX_LENGTH,
 )
+
+FREE_SPACE_MARGIN_BYTES = 16 * 1024 * 1024
+"""Chừa thêm 16 MiB ngoài phần cần cho file (T28).
+
+Nhận file tới khi ổ đĩa còn đúng 0 byte sẽ làm hệ điều hành và các chương trình
+khác hỏng việc, nên luôn để lại một khoảng thở.
+"""
 
 _SHA256_PATTERN = re.compile(rf"[0-9a-f]{{{SHA256_HEX_LENGTH}}}")
 """Dùng với fullmatch, không dùng match + "$": "$" khớp được cả trước dấu xuống dòng cuối chuỗi."""
@@ -72,8 +82,31 @@ def resume_offset(download_dir: Path, sha256: str, size: int) -> int:
 
     Không có .part -> 0. Nhỏ hơn size -> kích thước .part. Bằng size -> size.
     Lớn hơn size -> xóa .part, trả về 0.
+
+    Lấy kích thước .part làm vị trí tiếp tục là đúng vì dữ liệu được ghi tuần tự
+    từ đầu tới cuối: mọi byte đang có đều là byte đã nhận đúng. Đuôi hỏng vì mất
+    điện giữa lúc ghi sẽ bị bước so SHA-256 cuối cùng phát hiện.
+
+    sha256 được part_path kiểm tra; sai định dạng thì ValueError bay ra ngoài,
+    không âm thầm nhận lại từ đầu, vì đó là lỗi lập trình chứ không phải .part hỏng.
     """
-    raise NotImplementedError("T27 · R4")
+    path = part_path(download_dir, sha256)
+    try:
+        have = path.stat().st_size
+    except FileNotFoundError:
+        return 0
+    except OSError:
+        # Không đọc nổi (quyền, ổ đĩa lỗi): coi như chưa có gì, nhận lại từ đầu.
+        return 0
+
+    if have > size:
+        # Dài hơn cả file được khai thì chắc chắn hỏng — xóa để nhận lại.
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        return 0
+    return have
 
 
 def unique_path(directory: Path, filename: str) -> Path:
@@ -176,24 +209,69 @@ def finalize(part: Path, download_dir: Path, safe_name: str) -> Path:
 
 
 def has_free_space(download_dir: Path, needed_bytes: int) -> bool:
-    """Dùng shutil.disk_usage. Chừa thêm một khoảng an toàn nhỏ."""
-    raise NotImplementedError("T28 · R4")
+    """Dùng shutil.disk_usage. Chừa thêm một khoảng an toàn nhỏ.
+
+    Khoảng an toàn cần vì ổ đĩa đầy sát nút làm hệ điều hành và các chương trình
+    khác hỏng việc, và vì giữa lúc hỏi và lúc ghi xong còn có chương trình khác
+    cũng đang ghi.
+
+    Không hỏi được dung lượng thì trả về True: thà thử ghi rồi báo lỗi thật, còn
+    hơn từ chối một file hoàn toàn có chỗ chứa.
+    """
+    try:
+        free = shutil.disk_usage(Path(download_dir)).free
+    except OSError:
+        return True
+    return free >= needed_bytes + FREE_SPACE_MARGIN_BYTES
 
 
 def cleanup_old_parts(download_dir: Path, max_age_days: int = PART_MAX_AGE_DAYS) -> int:
-    """Xóa các .part không được sửa quá max_age_days ngày. Trả về số file đã xóa."""
-    raise NotImplementedError("T37 · R4")
+    """Xóa các .part không được sửa quá max_age_days ngày. Trả về số file đã xóa.
+
+    Chỉ đụng tới file .part trong .truyennhanh, không bao giờ đụng file thật
+    trong thư mục nhận — người dùng có thể để đó một file cũ nhiều năm.
+
+    Không tạo thư mục .truyennhanh nếu chưa có: dọn dẹp mà lại sinh ra rác mới
+    thì vô lý.
+    """
+    folder = Path(download_dir) / PART_DIR_NAME
+    if not folder.is_dir():
+        return 0
+
+    deadline = time.time() - max_age_days * 86400
+    removed = 0
+    for part in folder.glob(f"*{PART_SUFFIX}"):
+        try:
+            if part.stat().st_mtime < deadline:
+                part.unlink()
+                removed += 1
+        except OSError:
+            # Đang bị một lượt khác giữ, hoặc vừa bị xóa: bỏ qua, lần sau dọn tiếp.
+            continue
+    return removed
 
 
 class FileLocks:
-    """Bảo đảm không có hai lượt cùng sha256 ghi vào một .part (docs/03 mục 4.9 bước 8)."""
+    """Bảo đảm không có hai lượt cùng sha256 ghi vào một .part (docs/03 mục 4.9 bước 8).
+
+    Khóa theo mã băm chứ không theo tên file, vì .part được đặt tên theo mã băm:
+    hai máy gửi cùng một file với hai tên khác nhau vẫn ghi vào đúng một .part.
+    """
 
     def __init__(self) -> None:
-        raise NotImplementedError("T28 · R4")
+        self._lock = threading.Lock()
+        self._busy: set[str] = set()
 
     def acquire(self, sha256: str) -> bool:
         """Trả về False ngay nếu sha256 đang bận (KHÔNG chờ) — bên nhận trả REJECT busy."""
-        raise NotImplementedError("T28 · R4")
+        with self._lock:
+            if sha256 in self._busy:
+                return False
+            self._busy.add(sha256)
+            return True
 
     def release(self, sha256: str) -> None:
-        raise NotImplementedError("T28 · R4")
+        with self._lock:
+            # discard chứ không remove: nhả một khóa chưa giữ không được ném lỗi,
+            # vì khối finally của bên nhận gọi hàm này trên mọi đường thoát.
+            self._busy.discard(sha256)
