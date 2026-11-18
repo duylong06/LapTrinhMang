@@ -99,21 +99,25 @@ def unique_path(directory: Path, filename: str) -> Path:
 
 def ensure_inside(directory: Path, candidate: Path) -> Path:
     """Lớp phòng thủ cuối (docs/03 mục 4.9 bước 9)."""
-    # Dùng realpath thay cho resolve(strict=True) để tránh lỗi lock file trên Windows
-    # và tự động mở rộng các đường dẫn dạng 8.3 (VD: RUNNER~1 -> runneradmin)
-    base = os.path.realpath(directory)
-    resolved = os.path.realpath(candidate)
+    base = Path(os.path.realpath(directory))
+    resolved_candidate = Path(os.path.realpath(candidate))
 
-    # So sánh không phân biệt hoa thường (do Windows) và thêm dấu phân cách
-    # để tránh lỗi thư mục "nhan" và "nhan-evil" bị coi là giống nhau.
-    base_norm = os.path.normcase(base)
-    resolved_norm = os.path.normcase(resolved)
+    base_norm = os.path.normcase(str(base))
+    resolved_norm = os.path.normcase(str(resolved_candidate))
 
-    # Phải nằm trong base (khác base) và bắt đầu bằng base + dấu gạch chéo
     if resolved_norm == base_norm or not resolved_norm.startswith(base_norm + os.sep):
+        # Phòng trường hợp Windows trả về tên rút gọn 8.3 khi file đang bị lock (CI race condition)
+        resolved_parent = Path(os.path.realpath(candidate.parent))
+        fallback_candidate = resolved_parent / candidate.name
+        fallback_norm = os.path.normcase(str(fallback_candidate))
+
+        # Nếu thư mục cha nằm trong base, và file này không phải symlink trỏ ra ngoài
+        if fallback_norm.startswith(base_norm + os.sep) and not candidate.is_symlink():
+            return fallback_candidate
+
         raise ValueError(f"đường dẫn nằm ngoài thư mục nhận: {candidate}")
 
-    return Path(resolved)
+    return resolved_candidate
 
 
 def finalize(part: Path, download_dir: Path, safe_name: str) -> Path:
