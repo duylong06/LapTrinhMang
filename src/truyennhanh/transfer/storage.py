@@ -98,24 +98,22 @@ def unique_path(directory: Path, filename: str) -> Path:
 
 
 def ensure_inside(directory: Path, candidate: Path) -> Path:
-    """Lớp phòng thủ cuối (docs/03 mục 4.9 bước 9).
+    """Lớp phòng thủ cuối (docs/03 mục 4.9 bước 9)."""
+    # Dùng realpath thay cho resolve(strict=True) để tránh lỗi lock file trên Windows
+    # và tự động mở rộng các đường dẫn dạng 8.3 (VD: RUNNER~1 -> runneradmin)
+    base = os.path.realpath(directory)
+    resolved = os.path.realpath(candidate)
 
-    Trả về candidate đã resolve nếu nó nằm TRONG directory đã resolve; ngược lại ném ValueError.
-    """
-    base = directory.resolve()
-    resolved = candidate.resolve()
-    try:
-        # Thử resolve toàn bộ (khi file đã tồn tại, đảm bảo an toàn chống symlink)
-        resolved = candidate.resolve(strict=True)
-    except FileNotFoundError:
-        # Nếu file chưa tồn tại (VD: trong lúc tạo file mới), resolve thư mục cha 
-        # để tránh lỗi so sánh chuỗi sai lệch trên Windows
-        resolved = candidate.parent.resolve() / candidate.name
-    # `base in resolved.parents` chỉ đúng khi resolved nằm DƯỚI base và KHÁC base
-    # (is_relative_to cũng đúng khi hai đường dẫn bằng nhau, tức là ghi đè lên chính thư mục nhận).
-    if base not in resolved.parents:
+    # So sánh không phân biệt hoa thường (do Windows) và thêm dấu phân cách
+    # để tránh lỗi thư mục "nhan" và "nhan-evil" bị coi là giống nhau.
+    base_norm = os.path.normcase(base)
+    resolved_norm = os.path.normcase(resolved)
+
+    # Phải nằm trong base (khác base) và bắt đầu bằng base + dấu gạch chéo
+    if resolved_norm == base_norm or not resolved_norm.startswith(base_norm + os.sep):
         raise ValueError(f"đường dẫn nằm ngoài thư mục nhận: {candidate}")
-    return resolved
+
+    return Path(resolved)
 
 
 def finalize(part: Path, download_dir: Path, safe_name: str) -> Path:
@@ -134,7 +132,7 @@ def finalize(part: Path, download_dir: Path, safe_name: str) -> Path:
     """
     part = ensure_inside(download_dir, Path(part))
 
-    with open(part, "r+b") as f:
+    with open(part, "r+b") as f:  # r+b chứ không phải rb: trên Windows fsync cần handle ghi được
         os.fsync(f.fileno())
 
     for _ in range(_MAX_UNIQUE_ATTEMPTS):
@@ -143,24 +141,24 @@ def finalize(part: Path, download_dir: Path, safe_name: str) -> Path:
         try:
             fd = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
         except (FileExistsError, PermissionError):
-            # PermissionError: Trên Windows, nếu 2 luồng tạo file cùng lúc, 
-            # luồng sau có thể bị báo lỗi quyền truy cập thay vì FileExistsError.
-            continue  # Thử tên khác
+            # FileExistsError: Luồng khác đã nhanh tay tạo file này trước.
+            # PermissionError: Windows báo lỗi quyền truy cập khi 2 luồng tranh nhau tạo file.
+            continue
             
         os.close(fd)
         
         try:
             os.replace(part, target)
         except PermissionError:
-            # Windows: File rỗng vừa tạo bị antivirus/luồng khác lock.
-            # Dọn rác và nhảy sang thử tên khác (VD: trung (1).txt).
+            # Windows: File rỗng vừa tạo có thể bị lock tạm thời bởi antivirus/luồng khác.
+            # Dọn dẹp file rỗng và nhảy sang thử tên tiếp theo.
             try:
                 os.unlink(target)
             except OSError:
                 pass
             continue
         except OSError:
-            # Các lỗi nghiêm trọng khác (VD: ổ đĩa đầy)
+            # Các lỗi nghiêm trọng khác (VD: ổ đĩa đầy): Dọn rác và văng lỗi ra ngoài.
             try:
                 os.unlink(target)
             except OSError:
